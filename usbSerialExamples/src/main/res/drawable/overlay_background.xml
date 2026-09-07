@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Фон оверлея: подложка с лёгким градиентом и скруглением только снизу -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="@color/overlay_background_top"
+                android:endColor="@color/overlay_background_bottom" />
+            <corners
+                android:topLeftRadius="0dp"
+                android:topRightRadius="0dp"
+                android:bottomLeftRadius="@dimen/overlay_corner_radius"
+                android:bottomRightRadius="@dimen/overlay_corner_radius" />
+        </shape>
+    </item>
+</layer-list>

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="baud_rates">
+        <item>2400</item>
+        <item>9600</item>
+        <item>19200</item>
+        <item>57600</item>
+        <item>115200</item>
+    </string-array>
+    <string-array name="read_modes">
+        <item>event: SerialInputOutputManager.onNewData()</item>
+        <item>direct: UsbSerialPort.read()</item>
+    </string-array>
+    <!-- Порядок совпадает с SystemSettingsPreferences.SOUND_MODE_* -->
+    <string-array name="notification_sound_modes">
+        <item>Уведомление + аудиофокус</item>
+        <item>Системный сигнал без фокуса</item>
+        <item>Медиаканал без фокуса</item>
+        <item>Навигационная подсказка</item>
+        <item>Канал будильника</item>
+        <item>Системный обязательно слышимый</item>
+        <item>Системный эффект интерфейса (щелчок)</item>
+        <item>Системное уведомление со звуком</item>
+        <item>Контроль: ничего не проигрывать</item>
+    </string-array>
+    <!-- Ответы владельца в диалоге после проверки звука; порядок задан в SystemSettingsActivity -->
+    <string-array name="notification_sound_test_answers">
+        <item>Сигнал слышно, музыка играет дальше</item>
+        <item>Сигнал слышно, музыка остановилась</item>
+        <item>Сигнала не слышно, музыка играет дальше</item>
+        <item>Сигнала не слышно, музыка остановилась</item>
+    </string-array>
+    <string-array name="autostart_modes">
+        <item>Нет</item>
+        <item>Собственный (BOOT_COMPLETED)</item>
+        <item>Системный (автозапуск ГУ)</item>
+    </string-array>
+</resources>

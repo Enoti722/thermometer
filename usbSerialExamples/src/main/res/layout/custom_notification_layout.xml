@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="0dp">
+
+    <!-- Шапка уведомления -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="0dp"
+        android:paddingEnd="0dp"
+        android:paddingTop="0dp"
+        android:paddingBottom="0dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="vertical"
+            android:background="@drawable/notification_background"
+            android:layout_marginHorizontal="24dp"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="0dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp"
+                android:background="@drawable/notification_header_background">
+
+                <!-- Иконка приложения -->
+                <ImageView
+                    android:id="@+id/notificationIcon"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_alignParentStart="true"
+                    android:layout_centerVertical="true"
+                    android:src="@drawable/transmission"
+                    android:contentDescription="@string/app_name" />
+
+                <!-- Заголовок -->
+                <TextView
+                    android:id="@+id/notificationTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="8dp"
+                    android:layout_toEndOf="@id/notificationIcon"
+                    android:layout_centerVertical="true"
+                    android:layout_marginStart="8dp"
+                    android:text="Title"
+                    android:textSize="28sp"
+                    android:textColor="#FFFFFF" />
+
+                <!-- Таймер автозакрытия -->
+                <TextView
+                    android:id="@+id/timerText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp"
+                    android:text="5s"
+                    android:textColor="#CCCCCC"
+                    android:textSize="18sp" />
+
+            </LinearLayout>
+
+            <!-- Тело уведомления -->
+            <TextView
+                android:id="@+id/notificationBody"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="100dp"
+                android:padding="12dp"
+                android:text="Message body"
+                android:textSize="20sp"
+                android:textColor="#E9E9E9"
+                android:lineSpacingExtra="2dp" />
+
+            <!-- Подтверждение: показывается только у окон, которые нельзя пропустить (без таймера и крестика) -->
+            <Button
+                android:id="@+id/notificationOkButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginBottom="12dp"
+                android:background="@drawable/notification_ok_button_background"
+                android:minWidth="160dp"
+                android:paddingStart="24dp"
+                android:paddingEnd="24dp"
+                android:text="Ок"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF"
+                android:textSize="20sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- Контейнер для кнопки закрытия и таймера -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentTop="true"
+            android:layout_alignParentEnd="true"
+            android:layout_marginTop="0dp"
+            android:layout_marginRight="0dp"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <!-- Кнопка закрытия -->
+            <ImageButton
+                android:id="@+id/closeButton"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@android:color/transparent"
+                android:contentDescription="Close notification"
+                android:padding="4dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/xmark" />
+        </LinearLayout>
+    </RelativeLayout>
+
+</LinearLayout>

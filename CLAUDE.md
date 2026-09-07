@@ -1,0 +1,1 @@
+.cursor/_index.mdc
