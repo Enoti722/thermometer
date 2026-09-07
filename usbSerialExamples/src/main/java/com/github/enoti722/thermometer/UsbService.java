@@ -105,6 +105,7 @@ public class UsbService extends Service implements SerialInputOutputManager.List
      */
     private static final float SPEED_DISPLAY_STATIONARY_CLAMP_KMH = 2f;
 
+    private static final String INFO_TITLE_WARNING = "Информация";
     private static final String ALERT_TITLE_WARNING = "Предупреждение";
     private static final String ALERT_TITLE_ERROR = "Ошибка";
     private static final String MSG_AIR_TEMP_COLD =
@@ -377,7 +378,7 @@ public class UsbService extends Service implements SerialInputOutputManager.List
 
                         // Показываем уведомление о подключении
                         String deviceType = thermometerDevice.isEmulated() ? "эмулированному" : "реальному";
-                        showNotification("USB Serial", "Успешно подключено к " + deviceType + " устройству", 5);
+                        showNotification(INFO_TITLE_WARNING, "Успешно подключено к " + deviceType + " устройству", 5);
                     }
                 });
             }
@@ -2352,7 +2353,7 @@ public class UsbService extends Service implements SerialInputOutputManager.List
             connected = true;
 
             // Пример использования showNotification
-            showNotification("USB Serial", "Успешно подключено к устройству", 5);
+            showNotification(INFO_TITLE_WARNING, "Успешно подключено к устройству", 5);
 
             send("~W1000");
 //            controlLines.start();
