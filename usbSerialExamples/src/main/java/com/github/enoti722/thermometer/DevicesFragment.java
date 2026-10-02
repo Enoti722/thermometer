@@ -25,6 +25,7 @@ import android.provider.MediaStore;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.ListFragment;
@@ -45,6 +46,7 @@ import com.hoho.android.usbserial.driver.UsbSerialProber;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -61,6 +63,7 @@ public class DevicesFragment extends ListFragment {
 
     private ActivityResultLauncher<String[]> locationPermissionLauncher;
     private ActivityResultLauncher<String> saveDiagLogLauncher;
+    private ActivityResultLauncher<String> legacyStoragePermissionLauncher;
     private Runnable pendingAfterLocationPermission;
     private final Handler connectHandler = new Handler(Looper.getMainLooper());
     private final Runnable deferredUsbPrefsConnect = this::attemptConnectFromStoredPreferences;
@@ -113,6 +116,23 @@ public class DevicesFragment extends ListFragment {
                         return;
                     }
                     copyDiagLogFileToUri(ctx.getApplicationContext(), uri);
+                });
+        legacyStoragePermissionLauncher = registerForActivityResult(
+                new ActivityResultContracts.RequestPermission(),
+                granted -> {
+                    Context ctx = getContext();
+                    if (ctx == null) {
+                        return;
+                    }
+                    Context app = ctx.getApplicationContext();
+                    if (granted) {
+                        saveDiagLogToDownloadsWithoutPicker(app, createDiagnosticLogFileName());
+                    } else {
+                        LocalDiagLog.line(app, "W", TAG_DF,
+                                "legacy Downloads export: storage permission denied");
+                        Toast.makeText(ctx, R.string.export_log_storage_permission_denied,
+                                Toast.LENGTH_LONG).show();
+                    }
                 });
         setHasOptionsMenu(true);
         listAdapter = new ArrayAdapter<ListItem>(getActivity(), 0, listItems) {
@@ -322,61 +342,124 @@ public class DevicesFragment extends ListFragment {
             Toast.makeText(requireContext(), R.string.export_log_empty, Toast.LENGTH_LONG).show();
             return;
         }
-        String stamp = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(new Date());
-        String outName = "usb_diag_" + stamp + ".txt";
+        String outName = createDiagnosticLogFileName();
         try {
             saveDiagLogLauncher.launch(outName);
         } catch (ActivityNotFoundException e) {
             /* Многие магнитолы не содержат DocumentsUI — ACTION_CREATE_DOCUMENT некому обработать. */
             LocalDiagLog.w(app, TAG_DF, "CreateDocument: no handler, fallback to Downloads", e);
-            if (copyDiagLogToDownloadsMediaStore(app, outName)) {
-                Context ctx = getContext();
-                if (ctx != null) {
-                    Toast.makeText(ctx, R.string.export_log_saved_downloads, Toast.LENGTH_LONG).show();
-                }
-            } else {
-                Toast.makeText(requireContext(), R.string.export_log_save_failed, Toast.LENGTH_LONG).show();
-            }
+            saveDiagLogToDownloadsWithoutPicker(app, outName);
         }
+    }
+
+    private String createDiagnosticLogFileName() {
+        String stamp = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(new Date());
+        return "usb_diag_" + stamp + ".txt";
     }
 
     /**
      * Запасной экспорт без системного пикера SAF (часто отсутствует на авто-прошивках).
      */
-    private boolean copyDiagLogToDownloadsMediaStore(Context appContext, String displayName) {
+    private void saveDiagLogToDownloadsWithoutPicker(Context appContext, String displayName) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            showDownloadsExportResult(Api29DownloadsExporter.copy(appContext, displayName));
+            return;
+        }
+
+        if (ContextCompat.checkSelfPermission(appContext, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED) {
+            legacyStoragePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            return;
+        }
+        showDownloadsExportResult(copyDiagLogToLegacyDownloads(appContext, displayName));
+    }
+
+    private void showDownloadsExportResult(boolean saved) {
+        Context ctx = getContext();
+        if (ctx != null) {
+            Toast.makeText(ctx, saved ? R.string.export_log_saved_downloads
+                            : R.string.export_log_save_failed,
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /** Android 8/9: MediaStore.Downloads и RELATIVE_PATH ещё не существуют. */
+    @SuppressWarnings("deprecation")
+    private boolean copyDiagLogToLegacyDownloads(Context appContext, String displayName) {
         File src = LocalDiagLog.getLogFile(appContext);
         if (!src.exists() || src.length() == 0) {
             return false;
         }
-        ContentValues values = new ContentValues();
-        values.put(MediaStore.MediaColumns.DISPLAY_NAME, displayName);
-        values.put(MediaStore.MediaColumns.MIME_TYPE, "text/plain");
-        values.put(MediaStore.MediaColumns.RELATIVE_PATH,
-                Environment.DIRECTORY_DOWNLOADS + "/USBThermometer");
-        Uri collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI;
-        Uri item = appContext.getContentResolver().insert(collection, values);
-        if (item == null) {
+        File downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        File outputDir = new File(downloads, "USBThermometer");
+        try (InputStream in = new FileInputStream(src);
+             OutputStream out = openLegacyDownloadsFile(outputDir, displayName)) {
+            copyStream(in, out);
+            LocalDiagLog.i(appContext, TAG_DF, "log copied to legacy Downloads");
+            return true;
+        } catch (Exception e) {
+            LocalDiagLog.w(appContext, TAG_DF, "legacy Downloads export failed", e);
             return false;
         }
-        try (InputStream in = new FileInputStream(src);
-             OutputStream out = appContext.getContentResolver().openOutputStream(item)) {
-            if (out == null) {
+    }
+
+    private OutputStream openLegacyDownloadsFile(File outputDir, String displayName) throws IOException {
+        if (!outputDir.isDirectory() && !outputDir.mkdirs()) {
+            throw new IOException("cannot create " + outputDir);
+        }
+        return new FileOutputStream(new File(outputDir, displayName), false);
+    }
+
+    private static void copyStream(InputStream in, OutputStream out) throws IOException {
+        byte[] buf = new byte[16384];
+        int n;
+        while ((n = in.read(buf)) != -1) {
+            out.write(buf, 0, n);
+        }
+    }
+
+    /** Изолирует ссылки на API 29, чтобы Android 8/9 не пытались разрешить эти классы и поля. */
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private static final class Api29DownloadsExporter {
+        private Api29DownloadsExporter() {
+        }
+
+        static boolean copy(Context appContext, String displayName) {
+            File src = LocalDiagLog.getLogFile(appContext);
+            if (!src.exists() || src.length() == 0) {
                 return false;
             }
-            byte[] buf = new byte[16384];
-            int n;
-            while ((n = in.read(buf)) != -1) {
-                out.write(buf, 0, n);
-            }
-            LocalDiagLog.i(appContext, TAG_DF, "log copied to MediaStore Downloads");
-            return true;
-        } catch (IOException e) {
-            LocalDiagLog.w(appContext, TAG_DF, "MediaStore Downloads export failed", e);
+            Uri item = null;
             try {
-                appContext.getContentResolver().delete(item, null, null);
-            } catch (Exception ignored) {
+                ContentValues values = new ContentValues();
+                values.put(MediaStore.MediaColumns.DISPLAY_NAME, displayName);
+                values.put(MediaStore.MediaColumns.MIME_TYPE, "text/plain");
+                values.put(MediaStore.MediaColumns.RELATIVE_PATH,
+                        Environment.DIRECTORY_DOWNLOADS + "/USBThermometer");
+                Uri collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI;
+                item = appContext.getContentResolver().insert(collection, values);
+                if (item == null) {
+                    return false;
+                }
+                try (InputStream in = new FileInputStream(src);
+                     OutputStream out = appContext.getContentResolver().openOutputStream(item)) {
+                    if (out == null) {
+                        throw new IOException("openOutputStream null");
+                    }
+                    copyStream(in, out);
+                }
+                LocalDiagLog.i(appContext, TAG_DF, "log copied to MediaStore Downloads");
+                return true;
+            } catch (Exception e) {
+                LocalDiagLog.w(appContext, TAG_DF, "MediaStore Downloads export failed", e);
+                if (item != null) {
+                    try {
+                        appContext.getContentResolver().delete(item, null, null);
+                    } catch (Exception ignored) {
+                    }
+                }
+                return false;
             }
-            return false;
         }
     }
 
@@ -394,17 +477,13 @@ public class DevicesFragment extends ListFragment {
             if (out == null) {
                 throw new IOException("openOutputStream null");
             }
-            byte[] buf = new byte[16384];
-            int n;
-            while ((n = in.read(buf)) != -1) {
-                out.write(buf, 0, n);
-            }
+            copyStream(in, out);
             Context ctx = getContext();
             if (ctx != null) {
                 Toast.makeText(ctx, R.string.export_log_saved, Toast.LENGTH_SHORT).show();
             }
             LocalDiagLog.i(appContext, TAG_DF, "log copied to picker uri");
-        } catch (IOException e) {
+        } catch (Exception e) {
             Context ctx = getContext();
             if (ctx != null) {
                 Toast.makeText(ctx, R.string.export_log_save_failed, Toast.LENGTH_LONG).show();

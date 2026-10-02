@@ -58,6 +58,7 @@
     <string name="export_log_saved">Лог сохранён</string>
     <string name="export_log_save_failed">Не удалось записать файл. Выберите другое место или носитель.</string>
     <string name="export_log_saved_downloads">Лог сохранён в «Загрузки/USBThermometer»</string>
+    <string name="export_log_storage_permission_denied" translatable="false">Без доступа к памяти сохранить лог в «Загрузки» нельзя.</string>
     <string name="system_settings_section_autostart">Автозапуск термосервиса</string>
     <string name="system_settings_autostart_intro">Выберите, как приложение может поднимать фон без ручного открытия. Режим «Системный» закрывает окно и оставляет только фон, когда запуск не похож на ваш тап по иконке: приложение открыли напрямую (автозапуск магнитолы, подключение USB-датчика) либо referrer запуска совпал с шаблоном ниже. Шаблон нужен лишь для второго случая — достаточно фрагмента строки или regex под него (пример referrer в журнале: android-app://com.android.systemui).</string>
     <string name="system_settings_autostart_type_label">Тип автозапуска</string>

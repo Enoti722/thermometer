@@ -18,6 +18,11 @@
     <uses-feature android:name="android.hardware.usb.host" />
     <uses-permission android:name="android.permission.USB_PERMISSION" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Нужен только запасному экспорту в общую папку Downloads на Android 8/9,
+         когда в прошивке отсутствует системный файловый диалог (SAF). -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
     <!-- Показывает диалог исключения из оптимизации батареи (открывает системный UI, автоматической выдачи нет). -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
