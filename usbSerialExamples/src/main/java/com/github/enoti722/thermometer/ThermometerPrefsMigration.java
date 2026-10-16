@@ -41,17 +41,26 @@ final class ThermometerPrefsMigration {
         if (match == null) {
             return;
         }
-        String sn = match.getSerialNumber();
-        SharedPreferences.Editor ed = sp.edit();
+        if (!usbManager.hasPermission(match)) {
+            LocalDiagLog.i(app, "ThermometerPrefsMigration",
+                    "legacy device id=" + legacyId + " visible, USB permission is required before reading serial");
+            return;
+        }
+        String sn = UsbDeviceBySerial.serialNumberIfPermitted(usbManager, match);
+        SharedPreferences.Editor ed = sp.edit()
+                .putInt(ThermometerPrefsKeys.DEVICE_VENDOR_ID, match.getVendorId())
+                .putInt(ThermometerPrefsKeys.DEVICE_PRODUCT_ID, match.getProductId())
+                .remove(ThermometerPrefsKeys.LEGACY_DEVICE_INT);
         if (!TextUtils.isEmpty(sn)) {
             ed.putString(ThermometerPrefsKeys.DEVICE_SERIAL, sn);
-            ed.remove(ThermometerPrefsKeys.LEGACY_DEVICE_INT);
             ed.commit();
             LocalDiagLog.i(app, "ThermometerPrefsMigration",
                     "migrated legacy device id=" + legacyId + " → serial (len=" + sn.length() + ")");
         } else {
+            ed.putString(ThermometerPrefsKeys.DEVICE_SERIAL, "");
+            ed.commit();
             LocalDiagLog.i(app, "ThermometerPrefsMigration",
-                    "legacy device id=" + legacyId + " visible but serial null/empty, cannot migrate");
+                    "migrated legacy device id=" + legacyId + " → VID/PID (serial absent)");
         }
     }
 }

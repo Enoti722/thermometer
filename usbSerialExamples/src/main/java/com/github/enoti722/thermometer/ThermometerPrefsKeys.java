@@ -7,6 +7,9 @@ final class ThermometerPrefsKeys {
     static final String NAME = "termometer_sp";
     /** Реальный датчик: USB {@link android.hardware.usb.UsbDevice#getSerialNumber() серийный номер}. */
     static final String DEVICE_SERIAL = "device_serial";
+    /** Незащищённые identity hints: позволяют найти устройство и запросить USB permission до чтения serial. */
+    static final String DEVICE_VENDOR_ID = "device_vendor_id";
+    static final String DEVICE_PRODUCT_ID = "device_product_id";
     static final String PORT = "port";
     static final String BAUD = "baud";
     static final String WITH_IO_MANAGER = "withIoManager";

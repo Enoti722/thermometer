@@ -38,6 +38,7 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.Parcelable;
 import android.os.SystemClock;
+import android.provider.Settings;
 import android.service.notification.StatusBarNotification;
 import android.text.Spannable;
 import android.text.SpannableStringBuilder;
@@ -277,12 +278,17 @@ public class UsbService extends Service implements SerialInputOutputManager.List
         baudRate = sharedPreferences.getInt(ThermometerPrefsKeys.BAUD, baudRate);
         withIoManager = sharedPreferences.getBoolean(ThermometerPrefsKeys.WITH_IO_MANAGER, withIoManager);
         isEmulated = sharedPreferences.getBoolean(ThermometerPrefsKeys.IS_EMULATED, false);
+        int deviceVendorId = sharedPreferences.getInt(ThermometerPrefsKeys.DEVICE_VENDOR_ID, -1);
+        int deviceProductId = sharedPreferences.getInt(ThermometerPrefsKeys.DEVICE_PRODUCT_ID, -1);
+        int legacyDeviceId = sharedPreferences.getInt(ThermometerPrefsKeys.LEGACY_DEVICE_INT, 0);
 
         // Создаем соответствующее устройство
         if (isEmulated) {
             thermometerDevice = new EmulatedThermometerDevice();
         } else {
-            thermometerDevice = new RealThermometerDevice(this, deviceSerial, portNum, baudRate, withIoManager);
+            thermometerDevice = new RealThermometerDevice(this, deviceSerial,
+                    deviceVendorId, deviceProductId, legacyDeviceId,
+                    portNum, baudRate, withIoManager);
         }
 
         LocalDiagLog.i(this, TAG, "prefs: emu=" + isEmulated + " serialLen="
@@ -290,6 +296,11 @@ public class UsbService extends Service implements SerialInputOutputManager.List
 
         // Устанавливаем слушателя данных
         thermometerDevice.setDataListener(new IThermometerDevice.ThermometerDataListener() {
+            @Override
+            public void onConnected() {
+                handleThermometerConnected();
+            }
+
             @Override
             public void onTemperatureReceived(String temperature) {
                 handleTemperaturePayload(temperature);
@@ -370,16 +381,9 @@ public class UsbService extends Service implements SerialInputOutputManager.List
             // USB_DEVICE_ATTACHED (через MainActivity) и ручной перезапуск.
             if (thermometerDevice != null && !thermometerDevice.isConnected() && !isSensorHoldActive()) {
                 mainLooper.post(() -> {
-                    if (thermometerDevice.connect()) {
-                        connected = true;
-                        // Отправляем команду запроса данных
-                        thermometerDevice.sendCommand("~W1000");
-                        resetTemperatureAlertSessionState();
-
-                        // Показываем уведомление о подключении
-                        String deviceType = thermometerDevice.isEmulated() ? "эмулированному" : "реальному";
-                        showNotification(INFO_TITLE_WARNING, "Успешно подключено к " + deviceType + " устройству", 5);
-                    }
+                    // Результат приходит через onConnected(): это работает и при немедленном открытии,
+                    // и после асинхронного системного диалога USB-разрешения.
+                    thermometerDevice.connect();
                 });
             }
             
@@ -394,6 +398,24 @@ public class UsbService extends Service implements SerialInputOutputManager.List
     }
 
     private static final String CHANNEL_ID = "usb_service_channel";
+
+    private void handleThermometerConnected() {
+        connected = true;
+        boolean reconnectingLostSensor = sensorSignalLost;
+        if (!reconnectingLostSensor) {
+            resetTemperatureAlertSessionState();
+        }
+        // Без этой подписки датчик открыт, но периодические кадры температуры не отправляет.
+        thermometerDevice.sendCommand("~W1000");
+
+        // При восстановлении линии успехом считается первый кадр, а не открытый USB-порт.
+        // Иначе каждая фоновая попытка показывала бы ложное уведомление и стирала кеш удержания.
+        if (!reconnectingLostSensor) {
+            String deviceType = thermometerDevice.isEmulated() ? "эмулированному" : "реальному";
+            showNotification(INFO_TITLE_WARNING, "Успешно подключено к " + deviceType + " устройству", 5);
+        }
+        LocalDiagLog.i(this, TAG, "thermometer ready; subscription command sent");
+    }
 
     private void createNotification() {
 //        Intent notificationIntent = new Intent(this, MainActivity.class);
@@ -444,12 +466,14 @@ public class UsbService extends Service implements SerialInputOutputManager.List
         
         // Безопасное удаление оверлея
         try {
-            if (windowManager != null && overlayView != null) {
+            if (overlayViewAttached && windowManager != null && overlayView != null) {
                 windowManager.removeView(overlayView);
             }
         }
         catch (Exception e) {
             Log.e(TAG, "Ошибка при удалении оверлея", e);
+        } finally {
+            clearOverlayViewReferences();
         }
         
         // Безопасная очистка окна уведомлений
@@ -457,12 +481,14 @@ public class UsbService extends Service implements SerialInputOutputManager.List
             if (timerRunnable != null) {
                 notificationHandler.removeCallbacks(timerRunnable);
             }
-            if (notificationWindowManager != null && notificationView != null) {
+            if (notificationViewAttached && notificationWindowManager != null && notificationView != null) {
                 notificationWindowManager.removeView(notificationView);
             }
         }
         catch (Exception e) {
             Log.e(TAG, "Ошибка при удалении окна уведомлений", e);
+        } finally {
+            clearNotificationViewReferences();
         }
         
         // Безопасный вызов старого метода disconnect (для совместимости)
@@ -772,6 +798,7 @@ public class UsbService extends Service implements SerialInputOutputManager.List
 
     WindowManager windowManager = null;
     View overlayView = null;
+    private boolean overlayViewAttached = false;
     ImageView overlayTemperatureIcon = null;
     TextView tvTemperature = null;
     TextView tvVoltage = null;
@@ -779,6 +806,7 @@ public class UsbService extends Service implements SerialInputOutputManager.List
     // Notification window variables
     private WindowManager notificationWindowManager = null;
     private View notificationView = null;
+    private boolean notificationViewAttached = false;
     private TextView notificationTitle = null;
     private TextView notificationBody = null;
     private TextView timerText = null;
@@ -1141,10 +1169,6 @@ public class UsbService extends Service implements SerialInputOutputManager.List
         } catch (Exception e) {
             Log.w(TAG, "sensor reconnect: connect failed: " + e.getMessage());
         }
-        if (opened) {
-            connected = true;
-            thermometerDevice.sendCommand("~W1000");
-        }
         LocalDiagLog.line(this, "I", TAG, "sensor reconnect attempt: opened=" + opened);
         scheduleSensorReconnectAttempt(SENSOR_RECONNECT_INTERVAL_MS);
     }
@@ -1191,6 +1215,10 @@ public class UsbService extends Service implements SerialInputOutputManager.List
     }
 
     private void initOverlay() {
+        if (!canDrawOverlayWindows()) {
+            Log.w(TAG, "Overlay permission is not granted; overlay windows are disabled");
+            return;
+        }
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
 
         // Инфлейтим layout
@@ -1235,13 +1263,69 @@ public class UsbService extends Service implements SerialInputOutputManager.List
         params.x = 0;
         params.y = 0;
 
-        // Добавляем view в WindowManager
-        windowManager.addView(overlayView, params);
-        applyOverlayChromeLayout();
-        applyOverlayTextSizes();
+        // Разрешение может быть отозвано между проверкой и addView, а некоторые прошивки
+        // отклоняют overlay своим WindowManager. Сервис при этом должен продолжить работу.
+        try {
+            windowManager.addView(overlayView, params);
+            overlayViewAttached = true;
+        } catch (RuntimeException e) {
+            Log.e(TAG, "Unable to add overlay window", e);
+            clearOverlayViewReferences();
+        }
+        if (overlayViewAttached) {
+            applyOverlayChromeLayout();
+            applyOverlayTextSizes();
+        }
 
         // Инициализируем окно уведомлений
         initNotificationWindow();
+    }
+
+    private boolean canDrawOverlayWindows() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return true;
+        }
+        try {
+            return Settings.canDrawOverlays(this);
+        } catch (RuntimeException e) {
+            Log.e(TAG, "Unable to check overlay permission", e);
+            return false;
+        }
+    }
+
+    private void clearOverlayViewReferences() {
+        overlayViewAttached = false;
+        overlayView = null;
+        overlayTemperatureIcon = null;
+        tvTemperature = null;
+        tvVoltage = null;
+        tvSpeed = null;
+        windowManager = null;
+    }
+
+    private void clearNotificationViewReferences() {
+        notificationViewAttached = false;
+        notificationView = null;
+        notificationTitle = null;
+        notificationBody = null;
+        timerText = null;
+        closeButton = null;
+        notificationOkButton = null;
+        notificationWindowBaseHeightPx = 0;
+        notificationWindowManager = null;
+        isNotificationShowing = false;
+        currentNotification = null;
+        notificationQueue.clear();
+    }
+
+    private boolean isNotificationWindowAvailable() {
+        return notificationViewAttached
+                && notificationWindowManager != null
+                && notificationView != null
+                && notificationTitle != null
+                && notificationBody != null
+                && timerText != null
+                && canDrawOverlayWindows();
     }
 
     private float overlayUiScaleFactor() {
@@ -1879,6 +1963,10 @@ public class UsbService extends Service implements SerialInputOutputManager.List
     }
 
     private void initNotificationWindow() {
+        if (!canDrawOverlayWindows()) {
+            Log.w(TAG, "Overlay permission is not granted; floating notifications are disabled");
+            return;
+        }
         notificationWindowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
 
         // Инфлейтим layout для уведомления
@@ -1915,10 +2003,19 @@ public class UsbService extends Service implements SerialInputOutputManager.List
         params.x = 0;
         params.y = 0;
 
-        // Добавляем view в WindowManager (но пока скрываем)
+        // Добавляем view в WindowManager (но пока скрываем). Проверка разрешения выше
+        // не исключает его отзыв прямо перед addView.
         notificationView.setVisibility(View.GONE);
-        notificationWindowManager.addView(notificationView, params);
-        applyFloatingNotificationTextSizes();
+        try {
+            notificationWindowManager.addView(notificationView, params);
+            notificationViewAttached = true;
+        } catch (RuntimeException e) {
+            Log.e(TAG, "Unable to add floating notification window", e);
+            clearNotificationViewReferences();
+        }
+        if (notificationViewAttached) {
+            applyFloatingNotificationTextSizes();
+        }
     }
 
     /**
@@ -1929,6 +2026,10 @@ public class UsbService extends Service implements SerialInputOutputManager.List
      * @param playAlertSound проигрывать звук (только для предупреждений и ошибок)
      */
     public void showNotification(String title, String body, int durationSeconds, boolean playAlertSound) {
+        if (!isNotificationWindowAvailable()) {
+            Log.w(TAG, "Floating notification skipped: overlay window is unavailable");
+            return;
+        }
         // Проверяем, включены ли уведомления для текущего приложения
         if (!currentForegroundApp.isEmpty()) {
             boolean notificationsEnabled = settingsManager.isNotificationsEnabledForApp(currentForegroundApp);
@@ -1956,6 +2057,10 @@ public class UsbService extends Service implements SerialInputOutputManager.List
      * Настройка «уведомления для приложения» уважается так же, как и для обычных окон.
      */
     public void showAcknowledgeNotification(String title, String body, boolean playAlertSound) {
+        if (!isNotificationWindowAvailable()) {
+            Log.w(TAG, "Floating acknowledgement skipped: overlay window is unavailable");
+            return;
+        }
         if (!currentForegroundApp.isEmpty() && settingsManager != null
                 && !settingsManager.isNotificationsEnabledForApp(currentForegroundApp)) {
             Log.d(TAG, "Notifications disabled for app: " + currentForegroundApp);
@@ -1987,6 +2092,16 @@ public class UsbService extends Service implements SerialInputOutputManager.List
     }
 
     private void displayNextNotification() {
+        if (!isNotificationWindowAvailable()) {
+            if (timerRunnable != null) {
+                notificationHandler.removeCallbacks(timerRunnable);
+                timerRunnable = null;
+            }
+            notificationQueue.clear();
+            currentNotification = null;
+            isNotificationShowing = false;
+            return;
+        }
         // Проверяем, есть ли уведомления в очереди
         if (notificationQueue.isEmpty()) {
             isNotificationShowing = false;
@@ -2208,7 +2323,7 @@ public class UsbService extends Service implements SerialInputOutputManager.List
                 this,
                 0,
                 notificationIntent,
-                PendingIntent.FLAG_MUTABLE
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
         );
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(getApplication(), CHANNEL_ID)

@@ -55,6 +55,8 @@ public interface IThermometerDevice {
      * Интерфейс для получения данных от термометра
      */
     interface ThermometerDataListener {
+        /** Порт уже открыт и устройство готово принимать команды. */
+        void onConnected();
         void onTemperatureReceived(String temperature);
         void onError(String error);
         void onStatusChanged(String status, String statusIcon);

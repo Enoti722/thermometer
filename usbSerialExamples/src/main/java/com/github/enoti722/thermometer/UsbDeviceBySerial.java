@@ -22,7 +22,20 @@ final class UsbDeviceBySerial {
         UsbDevice match = null;
         int matchCount = 0;
         for (UsbDevice v : usbManager.getDeviceList().values()) {
-            String actual = normalizeSerial(v.getSerialNumber());
+            // Начиная с targetSdk 29 getSerialNumber() без USB permission бросает
+            // SecurityException. Неподтверждённые устройства здесь нельзя даже
+            // сравнивать по серийному номеру: сначала caller должен запросить доступ.
+            if (!usbManager.hasPermission(v)) {
+                continue;
+            }
+            String actualSerial;
+            try {
+                actualSerial = v.getSerialNumber();
+            } catch (SecurityException ignored) {
+                // Permission was revoked between hasPermission() and descriptor read.
+                continue;
+            }
+            String actual = normalizeSerial(actualSerial);
             boolean hit = want.isEmpty() ? actual.isEmpty() : Objects.equals(want, actual);
             if (hit) {
                 matchCount++;
@@ -33,6 +46,41 @@ final class UsbDeviceBySerial {
             return match;
         }
         return null;
+    }
+
+    /**
+     * Безопасное чтение защищённого USB descriptor. Разрешение может быть отозвано
+     * между hasPermission() и IPC-вызовом, поэтому SecurityException всё равно ловим.
+     */
+    static String serialNumberIfPermitted(UsbManager usbManager, UsbDevice device) {
+        if (usbManager == null || device == null || !usbManager.hasPermission(device)) {
+            return null;
+        }
+        try {
+            return device.getSerialNumber();
+        } catch (SecurityException ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * Находит единственное подключённое устройство с сохранёнными VID/PID.
+     * Эти дескрипторы доступны до выдачи USB permission и потому годятся только
+     * как hint для системного запроса; окончательная проверка остаётся за serial.
+     */
+    static UsbDevice findUniqueDeviceByVidPid(UsbManager usbManager, int vendorId, int productId) {
+        if (usbManager == null || vendorId < 0 || productId < 0) {
+            return null;
+        }
+        UsbDevice match = null;
+        int count = 0;
+        for (UsbDevice device : usbManager.getDeviceList().values()) {
+            if (device.getVendorId() == vendorId && device.getProductId() == productId) {
+                match = device;
+                count++;
+            }
+        }
+        return count == 1 ? match : null;
     }
 
     /** Нормализация под сравнение (без ведущих/хвостовых пробелов, верхний регистр). */
@@ -48,10 +96,17 @@ final class UsbDeviceBySerial {
         if (d == null) {
             return "null";
         }
-        String sn = d.getSerialNumber();
+        boolean serialReadable = true;
+        String sn = null;
+        try {
+            sn = d.getSerialNumber();
+        } catch (SecurityException ignored) {
+            serialReadable = false;
+        }
         boolean hasSn = !TextUtils.isEmpty(sn);
         return "vid=" + d.getVendorId() + " pid=" + d.getProductId()
                 + " deviceId=" + d.getDeviceId()
+                + " serialReadable=" + serialReadable
                 + " serialPresent=" + hasSn;
     }
 }

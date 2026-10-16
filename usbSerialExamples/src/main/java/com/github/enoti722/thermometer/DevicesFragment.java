@@ -6,9 +6,11 @@ import android.Manifest;
 import android.app.AlertDialog;
 import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
+import android.content.BroadcastReceiver;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.text.TextUtils;
@@ -58,6 +60,8 @@ import java.util.Locale;
 public class DevicesFragment extends ListFragment {
 
     private static final String TAG_DF = "DevicesFragment";
+    private static final String INTENT_ACTION_GRANT_USB_SELECTION =
+            BuildConfig.APPLICATION_ID + ".GRANT_USB_SELECTION";
     private static final long USB_RETRY_DELAY_MS = 350L;
     private static final int USB_RETRY_MAX_ATTEMPTS = 30;
 
@@ -68,6 +72,55 @@ public class DevicesFragment extends ListFragment {
     private final Handler connectHandler = new Handler(Looper.getMainLooper());
     private final Runnable deferredUsbPrefsConnect = this::attemptConnectFromStoredPreferences;
     private int usbConnectAttemptsRemaining;
+    private boolean usbPermissionReceiverRegistered;
+    private UsbDevice pendingUsbPermissionDevice;
+    private int pendingUsbPermissionPort;
+    private boolean pendingUsbPermissionForSelection;
+
+    private final BroadcastReceiver usbPermissionReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent == null || !INTENT_ACTION_GRANT_USB_SELECTION.equals(intent.getAction())) {
+                return;
+            }
+
+            UsbDevice pendingDevice = pendingUsbPermissionDevice;
+            int pendingPort = pendingUsbPermissionPort;
+            boolean forSelection = pendingUsbPermissionForSelection;
+
+            if (pendingDevice == null) {
+                LocalDiagLog.i(context.getApplicationContext(), TAG_DF,
+                        "USB permission result ignored: no pending request");
+                return;
+            }
+
+            @SuppressWarnings("deprecation")
+            UsbDevice resultDevice = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+            if (resultDevice != null && resultDevice.getDeviceId() != pendingDevice.getDeviceId()) {
+                LocalDiagLog.i(context.getApplicationContext(), TAG_DF,
+                        "USB permission result ignored: deviceId mismatch");
+                return;
+            }
+            clearPendingUsbPermission();
+
+            boolean granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false);
+            UsbManager usbManager = (UsbManager) context.getSystemService(Context.USB_SERVICE);
+            if (!granted || usbManager == null || !usbManager.hasPermission(pendingDevice)) {
+                LocalDiagLog.i(context.getApplicationContext(), TAG_DF,
+                        "USB permission denied for deviceId=" + pendingDevice.getDeviceId());
+                if (isAdded()) {
+                    Toast.makeText(requireContext(), "USB permission denied", Toast.LENGTH_SHORT).show();
+                }
+                return;
+            }
+
+            if (forSelection) {
+                persistSelectedUsbAndStart(pendingDevice, pendingPort);
+            } else {
+                startConfiguredUsbService();
+            }
+        }
+    };
 
     static class ListItem {
         UsbDevice device;
@@ -99,6 +152,11 @@ public class DevicesFragment extends ListFragment {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        Context receiverContext = requireContext().getApplicationContext();
+        ContextCompat.registerReceiver(receiverContext, usbPermissionReceiver,
+                new IntentFilter(INTENT_ACTION_GRANT_USB_SELECTION),
+                ContextCompat.RECEIVER_NOT_EXPORTED);
+        usbPermissionReceiverRegistered = true;
         locationPermissionLauncher = registerForActivityResult(
                 new ActivityResultContracts.RequestMultiplePermissions(),
                 result -> {
@@ -164,6 +222,21 @@ public class DevicesFragment extends ListFragment {
     }
 
     @Override
+    public void onDestroy() {
+        cancelDeferredUsbConnect();
+        clearPendingUsbPermission();
+        pendingAfterLocationPermission = null;
+        if (usbPermissionReceiverRegistered) {
+            usbPermissionReceiverRegistered = false;
+            try {
+                requireContext().getApplicationContext().unregisterReceiver(usbPermissionReceiver);
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        super.onDestroy();
+    }
+
+    @Override
     public void onActivityCreated(Bundle savedInstanceState) {
         super.onActivityCreated(savedInstanceState);
         setListAdapter(null);
@@ -208,7 +281,30 @@ public class DevicesFragment extends ListFragment {
         if (found != null) {
             LocalDiagLog.i(app, TAG_DF,
                     "prefs: saved serial matched USB " + UsbDeviceBySerial.fingerprintForLog(found));
-            requestDevicePermission(found);
+            startConfiguredUsbService();
+            return;
+        }
+        int legacyDeviceId = sp.getInt(ThermometerPrefsKeys.LEGACY_DEVICE_INT, 0);
+        if (TextUtils.isEmpty(storedSerial) && legacyDeviceId != 0
+                && legacyDeviceId != EmulatedThermometerDevice.EMULATED_USB_DEVICE_ID) {
+            UsbDevice legacyCandidate = findDeviceByRuntimeId(usbManager, legacyDeviceId);
+            if (legacyCandidate != null && !usbManager.hasPermission(legacyCandidate)) {
+                LocalDiagLog.i(app, TAG_DF,
+                        "prefs: requesting USB permission for legacy deviceId=" + legacyDeviceId);
+                requestDevicePermission(legacyCandidate,
+                        sp.getInt(ThermometerPrefsKeys.PORT, 0), false);
+                return;
+            }
+        }
+        int storedVendorId = sp.getInt(ThermometerPrefsKeys.DEVICE_VENDOR_ID, -1);
+        int storedProductId = sp.getInt(ThermometerPrefsKeys.DEVICE_PRODUCT_ID, -1);
+        UsbDevice permissionCandidate = UsbDeviceBySerial.findUniqueDeviceByVidPid(
+                usbManager, storedVendorId, storedProductId);
+        if (permissionCandidate != null && !usbManager.hasPermission(permissionCandidate)) {
+            LocalDiagLog.i(app, TAG_DF,
+                    "prefs: requesting USB permission for unique VID/PID candidate");
+            requestDevicePermission(permissionCandidate,
+                    sp.getInt(ThermometerPrefsKeys.PORT, 0), false);
             return;
         }
         usbConnectAttemptsRemaining--;
@@ -227,9 +323,7 @@ public class DevicesFragment extends ListFragment {
         inflater.inflate(R.menu.menu_devices, menu);
     }
 
-    private static final String INTENT_ACTION_GRANT_USB = BuildConfig.APPLICATION_ID + ".GRANT_USB";
-
-    private void requestDevicePermission(UsbDevice device) {
+    private void requestDevicePermission(UsbDevice device, int port, boolean forSelection) {
         cancelDeferredUsbConnect();
         if (device == null || getActivity() == null) {
             return;
@@ -239,14 +333,90 @@ public class DevicesFragment extends ListFragment {
             return;
         }
         if (usbManager.hasPermission(device)) {
-            runAfterLocationPermissionGranted(() -> UsbServiceStarter.start(requireContext()));
+            if (forSelection) {
+                persistSelectedUsbAndStart(device, port);
+            } else {
+                startConfiguredUsbService();
+            }
         } else {
-            int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_MUTABLE : 0;
-            Intent intent = new Intent(INTENT_ACTION_GRANT_USB);
+            pendingUsbPermissionDevice = device;
+            pendingUsbPermissionPort = port;
+            pendingUsbPermissionForSelection = forSelection;
+
+            Intent intent = new Intent(INTENT_ACTION_GRANT_USB_SELECTION);
             intent.setPackage(getActivity().getPackageName());
-            PendingIntent usbPermissionIntent = PendingIntent.getBroadcast(getActivity(), 0, intent, flags);
-            usbManager.requestPermission(device, usbPermissionIntent);
+            PendingIntent usbPermissionIntent = PendingIntent.getBroadcast(getActivity(), 0, intent,
+                    PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            try {
+                usbManager.requestPermission(device, usbPermissionIntent);
+            } catch (RuntimeException e) {
+                clearPendingUsbPermission();
+                LocalDiagLog.w(requireContext().getApplicationContext(), TAG_DF,
+                        "USB permission request failed", e);
+                Toast.makeText(requireContext(), "USB permission request failed", Toast.LENGTH_LONG).show();
+            }
         }
+    }
+
+    private static UsbDevice findDeviceByRuntimeId(UsbManager usbManager, int deviceId) {
+        if (usbManager == null) {
+            return null;
+        }
+        for (UsbDevice device : usbManager.getDeviceList().values()) {
+            if (device.getDeviceId() == deviceId) {
+                return device;
+            }
+        }
+        return null;
+    }
+
+    private void clearPendingUsbPermission() {
+        pendingUsbPermissionDevice = null;
+        pendingUsbPermissionPort = 0;
+        pendingUsbPermissionForSelection = false;
+    }
+
+    private void startConfiguredUsbService() {
+        if (!isAdded()) {
+            return;
+        }
+        cancelDeferredUsbConnect();
+        runAfterLocationPermissionGranted(() -> UsbServiceStarter.start(requireContext()));
+    }
+
+    /** Сохранять защищённый serial можно только после положительного USB permission callback. */
+    private void persistSelectedUsbAndStart(UsbDevice device, int port) {
+        if (!isAdded() || getActivity() == null || device == null) {
+            return;
+        }
+        UsbManager usbManager = (UsbManager) requireContext().getSystemService(Context.USB_SERVICE);
+        if (usbManager == null || !usbManager.hasPermission(device)) {
+            LocalDiagLog.i(requireContext().getApplicationContext(), TAG_DF,
+                    "selection aborted: USB permission disappeared before reading serial");
+            return;
+        }
+
+        String sn = UsbDeviceBySerial.serialNumberIfPermitted(usbManager, device);
+        SharedPreferences sharedPreferences = getActivity().getSharedPreferences(
+                ThermometerPrefsKeys.NAME, MODE_PRIVATE);
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+        editor.putString(ThermometerPrefsKeys.DEVICE_SERIAL, sn != null ? sn : "");
+        editor.putInt(ThermometerPrefsKeys.DEVICE_VENDOR_ID, device.getVendorId());
+        editor.putInt(ThermometerPrefsKeys.DEVICE_PRODUCT_ID, device.getProductId());
+        editor.putInt(ThermometerPrefsKeys.PORT, port);
+        editor.putInt(ThermometerPrefsKeys.BAUD, baudRate);
+        editor.putBoolean(ThermometerPrefsKeys.WITH_IO_MANAGER, withIoManager);
+        editor.putBoolean(ThermometerPrefsKeys.IS_EMULATED, false);
+        editor.remove(ThermometerPrefsKeys.LEGACY_DEVICE_INT);
+        editor.commit();
+
+        if (TextUtils.isEmpty(sn)) {
+            LocalDiagLog.line(requireContext().getApplicationContext(), "W", TAG_DF,
+                    "выбрано USB без серийного номера: сохраняем VID/PID для повторного подключения");
+        }
+
+        getActivity().stopService(new Intent(getActivity().getApplication(), UsbService.class));
+        startConfiguredUsbService();
     }
 
     private static final int PERMISSION_REQUEST_CODE = 1;
@@ -543,6 +713,8 @@ public class DevicesFragment extends ListFragment {
             SharedPreferences.Editor editor = sharedPreferences.edit();
 
             editor.remove(ThermometerPrefsKeys.DEVICE_SERIAL)
+                    .remove(ThermometerPrefsKeys.DEVICE_VENDOR_ID)
+                    .remove(ThermometerPrefsKeys.DEVICE_PRODUCT_ID)
                     .remove(ThermometerPrefsKeys.LEGACY_DEVICE_INT);
             editor.putInt(ThermometerPrefsKeys.PORT, 0);
             editor.putInt(ThermometerPrefsKeys.BAUD, baudRate);
@@ -561,30 +733,9 @@ public class DevicesFragment extends ListFragment {
         if(item.driver == null) {
             Toast.makeText(getActivity(), "no driver", Toast.LENGTH_SHORT).show();
         } else {
-            SharedPreferences sharedPreferences = getActivity().getSharedPreferences(ThermometerPrefsKeys.NAME, MODE_PRIVATE);
-
-            SharedPreferences.Editor editor = sharedPreferences.edit();
-
-            String sn = item.device.getSerialNumber();
-            editor.putString(ThermometerPrefsKeys.DEVICE_SERIAL, sn != null ? sn : "");
-            editor.putInt(ThermometerPrefsKeys.PORT, item.port);
-            editor.putInt(ThermometerPrefsKeys.BAUD, baudRate);
-            editor.putBoolean(ThermometerPrefsKeys.WITH_IO_MANAGER, withIoManager);
-            editor.putBoolean(ThermometerPrefsKeys.IS_EMULATED, false); // Реальное устройство
-            editor.remove(ThermometerPrefsKeys.LEGACY_DEVICE_INT);
-
-            editor.commit(); // синхронное сохранение
-
-            if (TextUtils.isEmpty(sn)) {
-                LocalDiagLog.line(requireContext().getApplicationContext(), "W", TAG_DF,
-                        "выбрано USB без серийного номера (getSerialNumber null): отличить несколько датчиков нельзя");
-            }
-
-            requestDevicePermission(item.device);
-
-            // Остановить текущий сервис
-            getActivity().stopService(new Intent(getActivity().getApplication(), UsbService.class));
-            runAfterLocationPermissionGranted(() -> UsbServiceStarter.start(requireContext()));
+            // getSerialNumber() защищён USB permission на targetSdk 29+.
+            // Сначала ждём системный callback и лишь затем сохраняем serial и запускаем сервис.
+            requestDevicePermission(item.device, item.port, true);
 
 
 //            Bundle args = new Bundle();

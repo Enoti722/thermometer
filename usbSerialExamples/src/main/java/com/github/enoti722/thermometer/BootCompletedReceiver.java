@@ -28,6 +28,10 @@ public class BootCompletedReceiver extends BroadcastReceiver {
         if (serial != null && !serial.trim().isEmpty()) {
             return true;
         }
+        if (sp.getInt(ThermometerPrefsKeys.DEVICE_VENDOR_ID, -1) >= 0
+                && sp.getInt(ThermometerPrefsKeys.DEVICE_PRODUCT_ID, -1) >= 0) {
+            return true;
+        }
         int legacy = sp.getInt(ThermometerPrefsKeys.LEGACY_DEVICE_INT, 0);
         return legacy != 0 && legacy != EmulatedThermometerDevice.EMULATED_USB_DEVICE_ID;
     }

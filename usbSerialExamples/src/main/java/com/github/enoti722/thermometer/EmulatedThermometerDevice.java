@@ -45,6 +45,7 @@ public class EmulatedThermometerDevice implements IThermometerDevice {
         // Сразу «онлайн»: вызывающий код вызывает sendCommand() сразу после connect().
         final int gen = ++connectionGeneration;
         connected = true;
+        notifyConnected();
 
         handler.postDelayed(() -> {
             if (!connected || gen != connectionGeneration) {
@@ -186,6 +187,12 @@ public class EmulatedThermometerDevice implements IThermometerDevice {
     private void notifyTemperature(String temperature) {
         if (dataListener != null) {
             dataListener.onTemperatureReceived(temperature);
+        }
+    }
+
+    private void notifyConnected() {
+        if (dataListener != null) {
+            dataListener.onConnected();
         }
     }
     

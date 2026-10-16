@@ -8,7 +8,6 @@ import android.content.IntentFilter;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbManager;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -45,7 +44,7 @@ public class TerminalFragment extends Fragment implements SerialInputOutputManag
 
     private enum UsbPermission { Unknown, Requested, Granted, Denied }
 
-    private static final String INTENT_ACTION_GRANT_USB = BuildConfig.APPLICATION_ID + ".GRANT_USB";
+    private static final String INTENT_ACTION_GRANT_USB = BuildConfig.APPLICATION_ID + ".GRANT_USB_TERMINAL";
     private static final int WRITE_WAIT_MILLIS = 2000;
     private static final int READ_WAIT_MILLIS = 2000;
 
@@ -60,6 +59,7 @@ public class TerminalFragment extends Fragment implements SerialInputOutputManag
     private SerialInputOutputManager usbIoManager;
     private UsbSerialPort usbSerialPort;
     private UsbPermission usbPermission = UsbPermission.Unknown;
+    private int pendingPermissionDeviceId = -1;
     private boolean connected = false;
 
     public TerminalFragment() {
@@ -67,6 +67,13 @@ public class TerminalFragment extends Fragment implements SerialInputOutputManag
             @Override
             public void onReceive(Context context, Intent intent) {
                 if(INTENT_ACTION_GRANT_USB.equals(intent.getAction())) {
+                    @SuppressWarnings("deprecation")
+                    UsbDevice resultDevice = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+                    if (resultDevice != null && pendingPermissionDeviceId >= 0
+                            && resultDevice.getDeviceId() != pendingPermissionDeviceId) {
+                        return;
+                    }
+                    pendingPermissionDeviceId = -1;
                     usbPermission = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
                             ? UsbPermission.Granted : UsbPermission.Denied;
                     connect();
@@ -214,7 +221,7 @@ public class TerminalFragment extends Fragment implements SerialInputOutputManag
             status("connection failed: no driver for device");
             return;
         }
-        if(driver.getPorts().size() < portNum) {
+        if(portNum < 0 || driver.getPorts().size() <= portNum) {
             status("connection failed: not enough ports at device");
             return;
         }
@@ -222,10 +229,11 @@ public class TerminalFragment extends Fragment implements SerialInputOutputManag
         UsbDeviceConnection usbConnection = usbManager.openDevice(driver.getDevice());
         if(usbConnection == null && usbPermission == UsbPermission.Unknown && !usbManager.hasPermission(driver.getDevice())) {
             usbPermission = UsbPermission.Requested;
-            int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_MUTABLE : 0;
+            pendingPermissionDeviceId = driver.getDevice().getDeviceId();
             Intent intent = new Intent(INTENT_ACTION_GRANT_USB);
             intent.setPackage(getActivity().getPackageName());
-            PendingIntent usbPermissionIntent = PendingIntent.getBroadcast(getActivity(), 0, intent, flags);
+            PendingIntent usbPermissionIntent = PendingIntent.getBroadcast(getActivity(), 0, intent,
+                    PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
             usbManager.requestPermission(driver.getDevice(), usbPermissionIntent);
             return;
         }

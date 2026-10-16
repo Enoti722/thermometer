@@ -6,12 +6,13 @@ import android.content.IntentFilter;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbManager;
-import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
+
+import androidx.core.content.ContextCompat;
 
 import com.hoho.android.usbserial.driver.UsbSerialDriver;
 import com.hoho.android.usbserial.driver.UsbSerialPort;
@@ -19,7 +20,6 @@ import com.hoho.android.usbserial.driver.UsbSerialProber;
 import com.hoho.android.usbserial.util.SerialInputOutputManager;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.Locale;
 
 /**
@@ -27,17 +27,21 @@ import java.util.Locale;
  */
 public class RealThermometerDevice implements IThermometerDevice, SerialInputOutputManager.Listener {
     private static final String TAG = "RealThermometerDevice";
-    private static final String INTENT_ACTION_GRANT_USB = BuildConfig.APPLICATION_ID + ".GRANT_USB";
+    private static final String INTENT_ACTION_GRANT_USB = BuildConfig.APPLICATION_ID + ".GRANT_USB_SERVICE";
     private static final int WRITE_WAIT_MILLIS = 2000;
     private static final int READ_WAIT_MILLIS = 2000;
     
     private final Context context;
     /** Сохранённый {@link UsbDevice#getSerialNumber()}; сопоставление через {@link UsbDeviceBySerial}. */
     private final String deviceSerial;
+    private final int deviceVendorId;
+    private final int deviceProductId;
+    private final int legacyDeviceId;
     private final int portNum;
     private final int baudRate;
     private final boolean withIoManager;
     private final Handler mainLooper;
+    private final ThermometerFrameParser frameParser = new ThermometerFrameParser();
     
     private UsbSerialPort usbSerialPort;
     private SerialInputOutputManager usbIoManager;
@@ -48,6 +52,7 @@ public class RealThermometerDevice implements IThermometerDevice, SerialInputOut
     
     private enum UsbPermission { Unknown, Requested, Granted, Denied }
     private UsbPermission usbPermission = UsbPermission.Unknown;
+    private int pendingPermissionDeviceId = -1;
     
     private final BroadcastReceiver broadcastReceiver;
     /** Receiver снимается в {@link #disconnect()} и ставится заново в {@link #connect()} — иначе после переподключения запрос прав уходит «в никуда». */
@@ -55,9 +60,26 @@ public class RealThermometerDevice implements IThermometerDevice, SerialInputOut
     /** Отказ «устройство не найдено» уже записан в диагностический лог — повторы подряд не дублируем. */
     private boolean deviceNotFoundLogged = false;
 
-    public RealThermometerDevice(Context context, String deviceSerial, int portNum, int baudRate, boolean withIoManager) {
+    public RealThermometerDevice(Context context, String deviceSerial, int portNum, int baudRate,
+                                 boolean withIoManager) {
+        this(context, deviceSerial, -1, -1, 0, portNum, baudRate, withIoManager);
+    }
+
+    public RealThermometerDevice(Context context, String deviceSerial, int deviceVendorId,
+                                 int deviceProductId, int portNum, int baudRate,
+                                 boolean withIoManager) {
+        this(context, deviceSerial, deviceVendorId, deviceProductId, 0,
+                portNum, baudRate, withIoManager);
+    }
+
+    public RealThermometerDevice(Context context, String deviceSerial, int deviceVendorId,
+                                 int deviceProductId, int legacyDeviceId, int portNum,
+                                 int baudRate, boolean withIoManager) {
         this.context = context;
         this.deviceSerial = deviceSerial != null ? deviceSerial : "";
+        this.deviceVendorId = deviceVendorId;
+        this.deviceProductId = deviceProductId;
+        this.legacyDeviceId = legacyDeviceId;
         this.portNum = portNum;
         this.baudRate = baudRate;
         this.withIoManager = withIoManager;
@@ -66,10 +88,23 @@ public class RealThermometerDevice implements IThermometerDevice, SerialInputOut
         this.broadcastReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
-                if(INTENT_ACTION_GRANT_USB.equals(intent.getAction())) {
+                if(intent != null && INTENT_ACTION_GRANT_USB.equals(intent.getAction())) {
+                    @SuppressWarnings("deprecation")
+                    UsbDevice resultDevice = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+                    if (resultDevice != null && pendingPermissionDeviceId >= 0
+                            && resultDevice.getDeviceId() != pendingPermissionDeviceId) {
+                        LocalDiagLog.i(RealThermometerDevice.this.context.getApplicationContext(), TAG,
+                                "USB permission result ignored: deviceId mismatch");
+                        return;
+                    }
+                    pendingPermissionDeviceId = -1;
                     usbPermission = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
                             ? UsbPermission.Granted : UsbPermission.Denied;
-                    connect();
+                    if (usbPermission == UsbPermission.Granted) {
+                        connect();
+                    } else {
+                        notifyStatus("connection failed: permission denied", "❌");
+                    }
                 }
             }
         };
@@ -82,7 +117,8 @@ public class RealThermometerDevice implements IThermometerDevice, SerialInputOut
             return;
         }
         IntentFilter filter = new IntentFilter(INTENT_ACTION_GRANT_USB);
-        context.registerReceiver(broadcastReceiver, filter);
+        ContextCompat.registerReceiver(context, broadcastReceiver, filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED);
         receiverRegistered = true;
     }
 
@@ -102,8 +138,28 @@ public class RealThermometerDevice implements IThermometerDevice, SerialInputOut
     public boolean connect() {
         registerUsbPermissionReceiver();
         UsbManager usbManager = (UsbManager) context.getSystemService(Context.USB_SERVICE);
-        UsbDevice device = UsbDeviceBySerial.findDevice(usbManager, deviceSerial);
+        if (usbManager == null) {
+            notifyStatus("connection failed: USB manager not available", "❌");
+            return false;
+        }
+        // Пустой serial не является идентификатором: поиск "по пустой строке"
+        // мог выбрать постороннее разрешённое USB-устройство без serial.
+        UsbDevice device = deviceSerial.isEmpty()
+                ? null : UsbDeviceBySerial.findDevice(usbManager, deviceSerial);
+        if (device == null && deviceSerial.isEmpty() && legacyDeviceId != 0
+                && legacyDeviceId != EmulatedThermometerDevice.EMULATED_USB_DEVICE_ID) {
+            device = findPermittedLegacyDevice(usbManager);
+        }
+        if (device == null && deviceSerial.isEmpty()) {
+            device = findUniquePermittedDeviceByHints(usbManager);
+        }
         if (device == null) {
+            UsbDevice permissionCandidate = findUniquePermissionCandidate(usbManager);
+            if (permissionCandidate != null && !usbManager.hasPermission(permissionCandidate)
+                    && usbPermission == UsbPermission.Unknown) {
+                requestUsbPermission(usbManager, permissionCandidate);
+                return false;
+            }
             resolvedDeviceId = -1;
             // Цикл переподключения зовёт connect() снова и снова — в диагностический лог пишем только первый отказ.
             if (!deviceNotFoundLogged) {
@@ -116,6 +172,7 @@ public class RealThermometerDevice implements IThermometerDevice, SerialInputOut
         }
         deviceNotFoundLogged = false;
         resolvedDeviceId = device.getDeviceId();
+        rememberIdentityHints(device);
         UsbSerialDriver driver = UsbSerialProber.getDefaultProber().probeDevice(device);
         if(driver == null) {
             driver = CustomProber.getCustomProber().probeDevice(device);
@@ -130,15 +187,6 @@ public class RealThermometerDevice implements IThermometerDevice, SerialInputOut
         }
         usbSerialPort = driver.getPorts().get(portNum);
         UsbDeviceConnection usbConnection = usbManager.openDevice(driver.getDevice());
-        if(usbConnection == null && usbPermission == UsbPermission.Unknown && !usbManager.hasPermission(driver.getDevice())) {
-            usbPermission = UsbPermission.Requested;
-            int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_MUTABLE : 0;
-            Intent intent = new Intent(INTENT_ACTION_GRANT_USB);
-            intent.setPackage(context.getPackageName());
-            PendingIntent usbPermissionIntent = PendingIntent.getBroadcast(context, 0, intent, flags);
-            usbManager.requestPermission(driver.getDevice(), usbPermissionIntent);
-            return false;
-        }
         if(usbConnection == null) {
             if (!usbManager.hasPermission(driver.getDevice()))
                 notifyStatus("connection failed: permission denied", "❌");
@@ -155,11 +203,13 @@ public class RealThermometerDevice implements IThermometerDevice, SerialInputOut
                 notifyStatus("unsupport setparameters", "❌");
             }
             if(withIoManager) {
+                frameParser.reset();
                 usbIoManager = new SerialInputOutputManager(usbSerialPort, this);
                 usbIoManager.start();
             }
-            notifyStatus("connected", "✔");
             connected = true;
+            notifyStatus("connected", "✔");
+            notifyConnected();
             LocalDiagLog.i(context.getApplicationContext(), TAG, "connected " + UsbDeviceBySerial.fingerprintForLog(device));
             return true;
         } catch (Exception e) {
@@ -167,6 +217,119 @@ public class RealThermometerDevice implements IThermometerDevice, SerialInputOut
             disconnect();
             return false;
         }
+    }
+
+    /**
+     * До USB permission доступны VID/PID, но не serial. Автоматически показываем
+     * системный запрос только для единственного поддерживаемого кандидата, чтобы
+     * случайно не дать доступ другому одинаковому устройству.
+     */
+    private UsbDevice findUniquePermissionCandidate(UsbManager usbManager) {
+        UsbDevice match = null;
+        int count = 0;
+        for (UsbDevice candidate : usbManager.getDeviceList().values()) {
+            if (deviceSerial.isEmpty() && legacyDeviceId != 0
+                    && legacyDeviceId != EmulatedThermometerDevice.EMULATED_USB_DEVICE_ID
+                    && candidate.getDeviceId() != legacyDeviceId) {
+                continue;
+            }
+            if (deviceVendorId >= 0 && candidate.getVendorId() != deviceVendorId) {
+                continue;
+            }
+            if (deviceProductId >= 0 && candidate.getProductId() != deviceProductId) {
+                continue;
+            }
+            UsbSerialDriver driver = UsbSerialProber.getDefaultProber().probeDevice(candidate);
+            if (driver == null) {
+                driver = CustomProber.getCustomProber().probeDevice(candidate);
+            }
+            if (driver == null || portNum < 0 || driver.getPorts().size() <= portNum) {
+                continue;
+            }
+            // Разрешённые устройства уже были проверены точным поиском по serial выше.
+            // Здесь нужен только следующий кандидат для системного permission dialog.
+            if (usbManager.hasPermission(candidate)) {
+                continue;
+            }
+            match = candidate;
+            count++;
+        }
+        return count == 1 ? match : null;
+    }
+
+    private UsbDevice findPermittedLegacyDevice(UsbManager usbManager) {
+        for (UsbDevice candidate : usbManager.getDeviceList().values()) {
+            if (candidate.getDeviceId() == legacyDeviceId && usbManager.hasPermission(candidate)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Для устройств без serial сохранённые VID/PID позволяют отличить выбранный
+     * датчик от другого уже разрешённого USB-устройства. При неоднозначности
+     * ничего не выбираем автоматически.
+     */
+    private UsbDevice findUniquePermittedDeviceByHints(UsbManager usbManager) {
+        if (deviceVendorId < 0 || deviceProductId < 0) {
+            return null;
+        }
+        UsbDevice match = null;
+        int count = 0;
+        for (UsbDevice candidate : usbManager.getDeviceList().values()) {
+            if (!usbManager.hasPermission(candidate)
+                    || candidate.getVendorId() != deviceVendorId
+                    || candidate.getProductId() != deviceProductId) {
+                continue;
+            }
+            String serial = UsbDeviceBySerial.serialNumberIfPermitted(usbManager, candidate);
+            if (serial != null && !serial.isEmpty()) {
+                continue;
+            }
+            UsbSerialDriver driver = UsbSerialProber.getDefaultProber().probeDevice(candidate);
+            if (driver == null) {
+                driver = CustomProber.getCustomProber().probeDevice(candidate);
+            }
+            if (driver == null || portNum < 0 || driver.getPorts().size() <= portNum) {
+                continue;
+            }
+            match = candidate;
+            count++;
+        }
+        return count == 1 ? match : null;
+    }
+
+    private void requestUsbPermission(UsbManager usbManager, UsbDevice device) {
+        usbPermission = UsbPermission.Requested;
+        resolvedDeviceId = device.getDeviceId();
+        pendingPermissionDeviceId = device.getDeviceId();
+        Intent intent = new Intent(INTENT_ACTION_GRANT_USB);
+        intent.setPackage(context.getPackageName());
+        PendingIntent usbPermissionIntent = PendingIntent.getBroadcast(context, 0, intent,
+                PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        try {
+            usbManager.requestPermission(device, usbPermissionIntent);
+            notifyStatus("waiting for USB permission", "…");
+        } catch (RuntimeException e) {
+            usbPermission = UsbPermission.Unknown;
+            pendingPermissionDeviceId = -1;
+            LocalDiagLog.w(context.getApplicationContext(), TAG, "USB permission request failed", e);
+            notifyStatus("connection failed: USB permission request", "❌");
+        }
+    }
+
+    /** После успешной проверки serial дополняем старые prefs безопасными VID/PID hints. */
+    private void rememberIdentityHints(UsbDevice device) {
+        UsbManager usbManager = (UsbManager) context.getSystemService(Context.USB_SERVICE);
+        String serial = UsbDeviceBySerial.serialNumberIfPermitted(usbManager, device);
+        context.getSharedPreferences(ThermometerPrefsKeys.NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString(ThermometerPrefsKeys.DEVICE_SERIAL, serial != null ? serial : "")
+                .putInt(ThermometerPrefsKeys.DEVICE_VENDOR_ID, device.getVendorId())
+                .putInt(ThermometerPrefsKeys.DEVICE_PRODUCT_ID, device.getProductId())
+                .remove(ThermometerPrefsKeys.LEGACY_DEVICE_INT)
+                .apply();
     }
 
     private static String logSerialHint(String s) {
@@ -179,6 +342,13 @@ public class RealThermometerDevice implements IThermometerDevice, SerialInputOut
     @Override
     public void disconnect() {
         connected = false;
+        // Отказ пользователя действует до пересоздания объекта. Иначе сервисный
+        // reconnect-цикл снова показывал бы permission dialog каждые несколько секунд.
+        if (usbPermission != UsbPermission.Denied) {
+            usbPermission = UsbPermission.Unknown;
+        }
+        pendingPermissionDeviceId = -1;
+        frameParser.reset();
         if(usbIoManager != null) {
             usbIoManager.setListener(null);
             usbIoManager.stop();
@@ -261,25 +431,21 @@ public class RealThermometerDevice implements IThermometerDevice, SerialInputOut
     }
     
     private void receive(byte[] data) {
-        String dataStr = new String(data);
-        if (dataStr.startsWith("~G")) {
-            String[] splitted = dataStr.split("G");
-            if (splitted.length == 2) {
-                Log.d(TAG, "G response: " + dataStr);
-                notifyTemperature(splitted[1]);
-            }
-            else {
-                Log.i(TAG, "unknown G response: " + dataStr);
-            }
-        }
-        else {
-            Log.i(TAG, "unknown response: " + dataStr);
+        for (String temperature : frameParser.append(data)) {
+            Log.d(TAG, "G response: " + temperature);
+            notifyTemperature(temperature);
         }
     }
     
     private void notifyTemperature(String temperature) {
         if (dataListener != null) {
             dataListener.onTemperatureReceived(temperature);
+        }
+    }
+
+    private void notifyConnected() {
+        if (dataListener != null) {
+            dataListener.onConnected();
         }
     }
     
