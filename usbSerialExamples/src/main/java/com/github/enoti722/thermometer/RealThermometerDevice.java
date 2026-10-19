@@ -14,12 +14,15 @@ import android.content.BroadcastReceiver;
 
 import androidx.core.content.ContextCompat;
 
+import com.hoho.android.usbserial.driver.CdcAcmSerialDriver;
 import com.hoho.android.usbserial.driver.UsbSerialDriver;
 import com.hoho.android.usbserial.driver.UsbSerialPort;
 import com.hoho.android.usbserial.driver.UsbSerialProber;
 import com.hoho.android.usbserial.util.SerialInputOutputManager;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -46,6 +49,10 @@ public class RealThermometerDevice implements IThermometerDevice, SerialInputOut
     private UsbSerialPort usbSerialPort;
     private SerialInputOutputManager usbIoManager;
     private boolean connected = false;
+    private boolean cdcPort = false;
+    private boolean dtrCompatibilityAttempted = false;
+    /** Ограничиваем подробный RX-лог первыми кусками каждой сессии, чтобы не раздувать файл раз в секунду. */
+    private int diagnosticRxChunks = 0;
     private ThermometerDataListener dataListener;
     /** После успешного поиска устройства по серийнику — для {@link #getDeviceId()}. */
     private int resolvedDeviceId = -1;
@@ -185,8 +192,10 @@ public class RealThermometerDevice implements IThermometerDevice, SerialInputOut
             notifyStatus("connection failed: not enough ports at device", "❌");
             return false;
         }
-        usbSerialPort = driver.getPorts().get(portNum);
-        UsbDeviceConnection usbConnection = usbManager.openDevice(driver.getDevice());
+            usbSerialPort = driver.getPorts().get(portNum);
+            cdcPort = driver instanceof CdcAcmSerialDriver;
+            dtrCompatibilityAttempted = false;
+            UsbDeviceConnection usbConnection = usbManager.openDevice(driver.getDevice());
         if(usbConnection == null) {
             if (!usbManager.hasPermission(driver.getDevice()))
                 notifyStatus("connection failed: permission denied", "❌");
@@ -202,15 +211,25 @@ public class RealThermometerDevice implements IThermometerDevice, SerialInputOut
             }catch (UnsupportedOperationException e){
                 notifyStatus("unsupport setparameters", "❌");
             }
-            if(withIoManager) {
-                frameParser.reset();
-                usbIoManager = new SerialInputOutputManager(usbSerialPort, this);
-                usbIoManager.start();
+            frameParser.reset();
+            diagnosticRxChunks = 0;
+            // У RealThermometerDevice нет отдельного цикла для режима direct: без IO manager порт
+            // формально открыт, но ни один байт никогда не читается. Старое/неполное значение prefs
+            // не должно оставлять оверлей с прочерками.
+            if (!withIoManager) {
+                LocalDiagLog.line(context.getApplicationContext(), "W", TAG,
+                        "direct read mode is unsupported by service; using IO manager");
             }
+            usbIoManager = new SerialInputOutputManager(usbSerialPort, this);
+            usbIoManager.start();
             connected = true;
+            LocalDiagLog.i(context.getApplicationContext(), TAG,
+                    "connected " + UsbDeviceBySerial.fingerprintForLog(device)
+                            + " port=" + portNum + " baud=" + baudRate
+                            + " driver=" + driver.getClass().getSimpleName()
+                            + " ioManager=true dtr=unchanged");
             notifyStatus("connected", "✔");
             notifyConnected();
-            LocalDiagLog.i(context.getApplicationContext(), TAG, "connected " + UsbDeviceBySerial.fingerprintForLog(device));
             return true;
         } catch (Exception e) {
             notifyStatus("connection failed: " + e.getMessage(), "❌");
@@ -360,6 +379,8 @@ public class RealThermometerDevice implements IThermometerDevice, SerialInputOut
             }
         } catch (IOException ignored) {}
         usbSerialPort = null;
+        cdcPort = false;
+        dtrCompatibilityAttempted = false;
 
         unregisterUsbPermissionReceiver();
     }
@@ -376,8 +397,10 @@ public class RealThermometerDevice implements IThermometerDevice, SerialInputOut
             return;
         }
         try {
-            byte[] data = (command + '\n').getBytes();
+            byte[] data = (command + '\n').getBytes(StandardCharsets.US_ASCII);
             usbSerialPort.write(data, WRITE_WAIT_MILLIS);
+            LocalDiagLog.i(context.getApplicationContext(), TAG,
+                    "TX completed: " + command + " bytes=" + data.length);
         } catch (Exception e) {
             onRunError(e);
         }
@@ -431,10 +454,49 @@ public class RealThermometerDevice implements IThermometerDevice, SerialInputOut
     }
     
     private void receive(byte[] data) {
-        for (String temperature : frameParser.append(data)) {
+        List<String> temperatures = frameParser.append(data);
+        diagnosticRxChunks++;
+        if (diagnosticRxChunks <= 3) {
+            LocalDiagLog.i(context.getApplicationContext(), TAG,
+                    "RX chunk #" + diagnosticRxChunks + " bytes=" + (data == null ? 0 : data.length)
+                            + " parsed=" + temperatures.size() + " preview=" + asciiPreview(data));
+        }
+        for (String temperature : temperatures) {
             Log.d(TAG, "G response: " + temperature);
             notifyTemperature(temperature);
         }
+    }
+
+    @Override
+    public boolean enableStreamingCompatibilityMode() {
+        if (!connected || usbSerialPort == null || !cdcPort || dtrCompatibilityAttempted) {
+            return false;
+        }
+        dtrCompatibilityAttempted = true;
+        try {
+            // CDC DTR означает «терминал открыл порт». Включаем его только после того, как
+            // обычная подписка не дала ни одного ~G: работающие устройства сохраняют старый путь.
+            usbSerialPort.setDTR(true);
+            LocalDiagLog.i(context.getApplicationContext(), TAG,
+                    "CDC streaming compatibility enabled: dtr=true");
+            return true;
+        } catch (IOException | UnsupportedOperationException e) {
+            LocalDiagLog.line(context.getApplicationContext(), "W", TAG,
+                    "unable to assert CDC DTR: " + e.getClass().getSimpleName()
+                            + ": " + e.getMessage());
+            return false;
+        }
+    }
+
+    private static String asciiPreview(byte[] data) {
+        if (data == null || data.length == 0) {
+            return "(empty)";
+        }
+        int count = Math.min(data.length, 64);
+        String text = new String(data, 0, count, StandardCharsets.US_ASCII)
+                .replace("\r", "\\r")
+                .replace("\n", "\\n");
+        return data.length > count ? text + "…" : text;
     }
     
     private void notifyTemperature(String temperature) {

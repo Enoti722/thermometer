@@ -25,6 +25,16 @@ public interface IThermometerDevice {
      * @param command команда для отправки
      */
     void sendCommand(String command);
+
+    /**
+     * Включить аппаратно-зависимый режим совместимости, если порт открыт, но потоковые данные
+     * не начались. Обычный рабочий путь не должен вызывать этот метод заранее.
+     *
+     * @return true, если режим был включён и команду подписки стоит повторить
+     */
+    default boolean enableStreamingCompatibilityMode() {
+        return false;
+    }
     
     /**
      * Получить ID устройства для отображения

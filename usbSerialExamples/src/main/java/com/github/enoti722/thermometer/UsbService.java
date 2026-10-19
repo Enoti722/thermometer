@@ -131,6 +131,10 @@ public class UsbService extends Service implements SerialInputOutputManager.List
     /** Датчик отдаёт кадр раз в секунду (подписка «~W1000»); такая тишина в эфире считается потерей сигнала. */
     private static final long SENSOR_DATA_TIMEOUT_MS = 8000L;
     private static final long SENSOR_DATA_WATCHDOG_PERIOD_MS = 2000L;
+    /** Повторяем идемпотентную подписку, если первое измерение не пришло после открытия CDC-порта. */
+    private static final long SENSOR_SUBSCRIPTION_RETRY_DELAY_MS = 1500L;
+    private static final long SENSOR_SUBSCRIPTION_COMPATIBILITY_DELAY_MS = 500L;
+    private static final int SENSOR_SUBSCRIPTION_MAX_ATTEMPTS = 3;
     /** Значок в шторке, пока на экране удерживается последнее показание с потерянного датчика. */
     private static final String SENSOR_HOLD_STATUS_ICON = "⚠";
 
@@ -166,8 +170,9 @@ public class UsbService extends Service implements SerialInputOutputManager.List
 
 
     private String deviceSerial = "";
-    private int portNum, baudRate;
-    private boolean withIoManager;
+    private int portNum = 0;
+    private int baudRate = 19200;
+    private boolean withIoManager = true;
     private boolean isEmulated;
     private IThermometerDevice thermometerDevice;
     private UsbSerialPort usbSerialPort;
@@ -219,6 +224,9 @@ public class UsbService extends Service implements SerialInputOutputManager.List
     private Runnable sensorReconnectRunnable;
     private Runnable sensorHoldExpireRunnable;
     private Runnable sensorDataWatchdogRunnable;
+    private Runnable sensorSubscriptionRetryRunnable;
+    private int sensorSubscriptionAttempts = 0;
+    private boolean awaitingFirstFrameAfterConnect = false;
     /** {@link SystemClock#elapsedRealtime()} последнего кадра с датчика; 0 — за сессию кадров ещё не было. */
     private long lastSensorFrameElapsedMs = 0L;
     private final ArrayDeque<TempSample> recentTemperatures = new ArrayDeque<>();
@@ -292,7 +300,8 @@ public class UsbService extends Service implements SerialInputOutputManager.List
         }
 
         LocalDiagLog.i(this, TAG, "prefs: emu=" + isEmulated + " serialLen="
-                + (TextUtils.isEmpty(deviceSerial) ? 0 : deviceSerial.trim().length()));
+                + (TextUtils.isEmpty(deviceSerial) ? 0 : deviceSerial.trim().length())
+                + " port=" + portNum + " baud=" + baudRate + " ioManager=" + withIoManager);
 
         // Устанавливаем слушателя данных
         thermometerDevice.setDataListener(new IThermometerDevice.ThermometerDataListener() {
@@ -405,8 +414,7 @@ public class UsbService extends Service implements SerialInputOutputManager.List
         if (!reconnectingLostSensor) {
             resetTemperatureAlertSessionState();
         }
-        // Без этой подписки датчик открыт, но периодические кадры температуры не отправляет.
-        thermometerDevice.sendCommand("~W1000");
+        startThermometerSubscription();
 
         // При восстановлении линии успехом считается первый кадр, а не открытый USB-порт.
         // Иначе каждая фоновая попытка показывала бы ложное уведомление и стирала кеш удержания.
@@ -414,7 +422,7 @@ public class UsbService extends Service implements SerialInputOutputManager.List
             String deviceType = thermometerDevice.isEmulated() ? "эмулированному" : "реальному";
             showNotification(INFO_TITLE_WARNING, "Успешно подключено к " + deviceType + " устройству", 5);
         }
-        LocalDiagLog.i(this, TAG, "thermometer ready; subscription command sent");
+        LocalDiagLog.i(this, TAG, "thermometer ready; subscription sequence started");
     }
 
     private void createNotification() {
@@ -445,6 +453,7 @@ public class UsbService extends Service implements SerialInputOutputManager.List
         // Снимаем сторож эфира и незавершённый эпизод потери сигнала до сброса статуса,
         // иначе удержание не даст очистить показание.
         stopSensorDataWatchdog();
+        cancelThermometerSubscriptionRetries();
         cancelSensorReconnectAttempts();
         cancelSensorHoldExpiry();
         sensorSignalLost = false;
@@ -922,6 +931,12 @@ public class UsbService extends Service implements SerialInputOutputManager.List
         if (raw == null) {
             return;
         }
+        if (awaitingFirstFrameAfterConnect) {
+            awaitingFirstFrameAfterConnect = false;
+            cancelThermometerSubscriptionRetries();
+            LocalDiagLog.i(this, TAG, "first temperature frame received after subscription attempt "
+                    + sensorSubscriptionAttempts);
+        }
         lastSensorFrameElapsedMs = SystemClock.elapsedRealtime();
         if (sensorSignalLost) {
             onSensorSignalRestored();
@@ -970,6 +985,7 @@ public class UsbService extends Service implements SerialInputOutputManager.List
         lastRawTemperatureStringFromDevice = "";
         // Новая сессия датчика: удерживать и «терять» пока нечего, сторож взведёт первый кадр.
         stopSensorDataWatchdog();
+        cancelThermometerSubscriptionRetries();
         lastSensorFrameElapsedMs = 0L;
         lastKnownTemperatureDisplay = "";
         lastKnownRawTemperatureFromDevice = "";
@@ -1279,6 +1295,50 @@ public class UsbService extends Service implements SerialInputOutputManager.List
 
         // Инициализируем окно уведомлений
         initNotificationWindow();
+    }
+
+    /**
+     * CDC-порт некоторых головных устройств становится реально готов к обмену чуть позже успешного open().
+     * Команда подписки задаёт один и тот же период, поэтому несколько попыток до первого кадра безопасны.
+     */
+    private void startThermometerSubscription() {
+        cancelThermometerSubscriptionRetries();
+        awaitingFirstFrameAfterConnect = true;
+        sensorSubscriptionAttempts = 0;
+        sendThermometerSubscriptionAttempt();
+    }
+
+    private void sendThermometerSubscriptionAttempt() {
+        sensorSubscriptionRetryRunnable = null;
+        if (!awaitingFirstFrameAfterConnect || !connected || thermometerDevice == null) {
+            return;
+        }
+        sensorSubscriptionAttempts++;
+        LocalDiagLog.i(this, TAG, "subscription attempt " + sensorSubscriptionAttempts
+                + "/" + SENSOR_SUBSCRIPTION_MAX_ATTEMPTS);
+        thermometerDevice.sendCommand("~W1000");
+        if (sensorSubscriptionAttempts < SENSOR_SUBSCRIPTION_MAX_ATTEMPTS) {
+            sensorSubscriptionRetryRunnable = this::sendThermometerSubscriptionAttempt;
+            mainLooper.postDelayed(sensorSubscriptionRetryRunnable, SENSOR_SUBSCRIPTION_RETRY_DELAY_MS);
+        } else if (thermometerDevice.enableStreamingCompatibilityMode()) {
+            LocalDiagLog.line(this, "W", TAG,
+                    "no temperature frames in normal CDC mode; retrying subscription with compatibility mode");
+            sensorSubscriptionAttempts = 0;
+            sensorSubscriptionRetryRunnable = this::sendThermometerSubscriptionAttempt;
+            mainLooper.postDelayed(sensorSubscriptionRetryRunnable,
+                    SENSOR_SUBSCRIPTION_COMPATIBILITY_DELAY_MS);
+        } else {
+            LocalDiagLog.line(this, "W", TAG,
+                    "subscription attempts exhausted; waiting for first RX frame");
+        }
+    }
+
+    private void cancelThermometerSubscriptionRetries() {
+        if (sensorSubscriptionRetryRunnable != null) {
+            mainLooper.removeCallbacks(sensorSubscriptionRetryRunnable);
+            sensorSubscriptionRetryRunnable = null;
+        }
+        awaitingFirstFrameAfterConnect = false;
     }
 
     private boolean canDrawOverlayWindows() {
