@@ -60,7 +60,9 @@ public class SettingsManager {
                         obj.optInt("overlayAlphaTop", AppSettings.DEFAULT_OVERLAY_ALPHA_TOP),
                         obj.optInt("overlayAlphaBottom", AppSettings.DEFAULT_OVERLAY_ALPHA_BOTTOM),
                         obj.optInt("overlayPositionXPercent", 50),
-                        obj.optInt("overlayPositionYPercent", 5)
+                        obj.optInt("overlayPositionYPercent", 5),
+                        obj.optBoolean("overlayVertical", false),
+                        (float) obj.optDouble("overlayDataSizeScale", AppSettings.DEFAULT_OVERLAY_DATA_SIZE_SCALE)
                 ));
             }
         } catch (JSONException e) {
@@ -85,6 +87,8 @@ public class SettingsManager {
                 obj.put("overlayAlphaBottom", settings.getOverlayAlphaBottom());
                 obj.put("overlayPositionXPercent", settings.getOverlayPositionXPercent());
                 obj.put("overlayPositionYPercent", settings.getOverlayPositionYPercent());
+                obj.put("overlayVertical", settings.isOverlayVertical());
+                obj.put("overlayDataSizeScale", (double) settings.getOverlayDataSizeScale());
                 array.put(obj);
             }
         } catch (JSONException e) {
@@ -198,5 +202,20 @@ public class SettingsManager {
             return appSettings.getOverlayAlphaBottom();
         }
         return AppSettings.DEFAULT_OVERLAY_ALPHA_BOTTOM;
+    }
+
+    /** Данные оверлея вертикально в несколько строк (значок, температура, скорость). */
+    public boolean isOverlayVerticalForApp(String packageName) {
+        AppSettings appSettings = getAppSettings(packageName);
+        return appSettings != null && appSettings.isOverlayVertical();
+    }
+
+    /** Масштаб отображаемых данных оверлея для приложения (1.0 — размер как сейчас). */
+    public float getOverlayDataSizeScaleForApp(String packageName) {
+        AppSettings appSettings = getAppSettings(packageName);
+        if (appSettings != null) {
+            return appSettings.getOverlayDataSizeScale();
+        }
+        return AppSettings.DEFAULT_OVERLAY_DATA_SIZE_SCALE;
     }
 }

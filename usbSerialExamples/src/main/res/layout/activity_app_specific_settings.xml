@@ -128,6 +128,82 @@
                 android:layout_height="1dp"
                 android:background="#E0E0E0" />
 
+            <LinearLayout
+                android:id="@+id/layout_overlay_vertical"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingVertical="12dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Отображать данные вертикально"
+                    android:textSize="16sp" />
+
+                <Switch
+                    android:id="@+id/switch_overlay_vertical"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Включено: 1-я строка — значок термометра/снежинки, 2-я — температура (°C), 3-я — скорость (км/ч)."
+                android:textSize="12sp"
+                android:textColor="#757575"
+                android:paddingBottom="8dp" />
+
+            <View
+                android:id="@+id/divider_overlay_vertical"
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#E0E0E0" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Размер данных оверлея"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:paddingTop="20dp"
+                android:paddingBottom="8dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingTop="8dp">
+
+                <SeekBar
+                    android:id="@+id/seekbar_data_size"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:max="80"
+                    android:progress="20" />
+
+                <TextView
+                    android:id="@+id/text_data_size_value"
+                    android:layout_width="64dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:gravity="center"
+                    android:text="x1"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="x0.25 … x4.0; x1 — размер как сейчас. Влияет на текст, значок и окно оверлея."
+                android:textSize="12sp"
+                android:textColor="#757575"
+                android:paddingTop="8dp" />
+
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -229,8 +305,8 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:max="110"
-                    android:progress="55" />
+                    android:max="140"
+                    android:progress="70" />
 
                 <EditText
                     android:id="@+id/edittext_position_x"
@@ -285,7 +361,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="-5% … 105%: точка на экране (от левого верха к правому низу). Якорь — центр оверлея; при 0%/0% центр в углу — блок частично за экраном."
+                android:text="Горизонталь -20% … 120%, вертикаль -5% … 105%: точка на экране (от левого верха к правому низу). Якорь — центр оверлея; при 0%/0% центр в углу — блок частично за экраном."
                 android:textSize="12sp"
                 android:textColor="#757575"
                 android:paddingTop="16dp" />

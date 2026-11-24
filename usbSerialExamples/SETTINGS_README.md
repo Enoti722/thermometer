@@ -17,7 +17,9 @@
 - ✅ **Расширенный список приложений** - показываются все пользовательские приложения и приложения с launcher activity
 - ✅ **Разрешение QUERY_ALL_PACKAGES** для доступа ко всем приложениям на Android 11+
 - ✅ **Режим редактирования** с множественным выбором
-- ✅ **Настройка позиции оверлея** через ползунки (0-100%)
+- ✅ **Настройка позиции оверлея** через ползунки (горизонталь -20…120%, вертикаль -5…105%)
+- ✅ **Масштаб отображаемых данных оверлея** для каждого приложения (x0.25 … x4.0)
+- ✅ **Вертикальное отображение данных** оверлея в несколько строк (значок, температура, скорость)
 
 ## Структура
 
@@ -42,9 +44,11 @@
    - **Иконка и название приложения** в заголовке
    - Включение/отключение оверлея
    - Включение/отключение уведомлений
-   - Ползунки для настройки позиции оверлея (горизонталь и вертикаль, 0-100%)
+   - Ползунки для настройки позиции оверлея (горизонталь -20…120%, вертикаль -5…105%)
    - Возможность ввода значения позиции с клавиатуры
    - Кнопка сброса позиции оверлея к центру (50%, 50%)
+   - Переключатель **вертикального отображения данных**: значок термометра/снежинки, температура (°C), скорость (км/ч) — каждый элемент с новой строки
+   - Ползунок **размера отображаемых данных** (x0.25 … x4.0; x1 — размер как сейчас)
    - Кнопка удаления настроек приложения в заголовке
 
 ### Классы данных
@@ -52,7 +56,10 @@
 - **AppSettings** - Модель настроек приложения с полями:
   - packageName, appName
   - overlayEnabled, notificationsEnabled
-  - overlayPositionXPercent, overlayPositionYPercent (0-100)
+  - overlayPositionXPercent (-20…120), overlayPositionYPercent (-5…105)
+  - overlaySpeedVisible, overlayAlphaTop, overlayAlphaBottom
+  - overlayVertical (данные вертикально в несколько строк)
+  - overlayDataSizeScale (масштаб отображаемых данных, x0.25 … x4.0)
   - isSelected (для режима редактирования)
   
 - **SettingsManager** - Менеджер для работы с настройками (SharedPreferences)
@@ -92,8 +99,13 @@
     "appName": "Example App",
     "overlayEnabled": true,
     "notificationsEnabled": false,
+    "overlaySpeedVisible": false,
+    "overlayAlphaTop": 217,
+    "overlayAlphaBottom": 240,
     "overlayPositionXPercent": 50,
-    "overlayPositionYPercent": 5
+    "overlayPositionYPercent": 5,
+    "overlayVertical": false,
+    "overlayDataSizeScale": 1.0
   }
 ]
 ```
@@ -114,6 +126,8 @@ boolean isOverlayEnabledForApp(String packageName)
 boolean isNotificationsEnabledForApp(String packageName)
 int getOverlayPositionXPercentForApp(String packageName)
 int getOverlayPositionYPercentForApp(String packageName)
+boolean isOverlayVerticalForApp(String packageName)
+float getOverlayDataSizeScaleForApp(String packageName)
 ```
 
 Эти методы возвращают настройки для конкретного приложения, если они есть, иначе возвращают значения по умолчанию:
@@ -121,6 +135,8 @@ int getOverlayPositionYPercentForApp(String packageName)
 - `isNotificationsEnabledForApp`: **true** (включено)
 - `getOverlayPositionXPercentForApp`: **50** (центр по горизонтали)
 - `getOverlayPositionYPercentForApp`: **5** (верх экрана)
+- `isOverlayVerticalForApp`: **false** (данные в одну строку)
+- `getOverlayDataSizeScaleForApp`: **1.0** (размер как сейчас)
 
 ## Использование
 

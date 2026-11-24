@@ -87,10 +87,24 @@ public class UsbService extends Service implements SerialInputOutputManager.List
     private static final int OVERLAY_WIDTH_NO_SPEED = 300;
     /** Базовая высота окна оверлея (px), совпадает с layout до масштабирования. */
     private static final int OVERLAY_HEIGHT_PX = 100;
+    /**
+     * Вертикальный блок данных (значок, температура, скорость — строками): базовая ширина окна
+     * и оценка высоты (px до масштабирования): рамка + по строке на каждый элемент.
+     */
+    private static final int OVERLAY_WIDTH_VERTICAL_PX = 240;
+    private static final int OVERLAY_VERTICAL_LINE_PX = 34;
+    private static final int OVERLAY_VERTICAL_FRAME_PX = 26;
 
     /** Последние применённые проценты якоря (для пересчёта при смене масштаба UI). */
     private int lastOverlayPositionXPercent = 50;
     private int lastOverlayPositionYPercent = 5;
+    /** Данные оверлея вертикально в несколько строк — настройка текущего приложения. */
+    private boolean currentOverlayVertical = false;
+    /**
+     * Масштаб отображаемых данных оверлея для текущего приложения (1.0 — размер как раньше).
+     * Умножается на общий масштаб оверлея из настроек системы.
+     */
+    private float currentDataSizeScale = AppSettings.DEFAULT_OVERLAY_DATA_SIZE_SCALE;
 
     /**
      * Показывать блок скорости (км/ч). Источник: GPS ({@link GpsSpeedProvider}) или эмуляция ({@link EmulatedSpeedProvider}, {@link SpeedEmulationActivity}).
@@ -119,9 +133,16 @@ public class UsbService extends Service implements SerialInputOutputManager.List
             "Сигнал от датчика внешней температуры был потерян, переподключение прошло успешно. Рекомендуется проверка электропроводки или датчика";
     /** Длительность показа оверлей-уведомлений по событиям (сек.) */
     private static final int TEMP_ALERT_DURATION_SEC = 10;
+    /**
+     * Порог предупреждения об обледенении. Сравнивается не сырое значение с датчика, а то, которое
+     * выведено на экран: с поправкой датчика и удержанием показания по правилу средней скорости.
+     */
     private static final float AIR_TEMP_COLD_THRESHOLD_C = 5f;
-    /** Минимальная скорость (км/ч), при которой считаем «движение» для предупреждения о холоде */
-    private static final float MOTION_MIN_SPEED_KMH = 3f;
+    /**
+     * Гистерезис повторного предупреждения об обледенении: после показанного окна разрешение выдаётся
+     * заново, когда показанная температура превысит порог на столько градусов (+5 °C → повтор при +8 °C).
+     */
+    private static final float AIR_TEMP_COLD_REARM_DELTA_C = 3f;
     private static final long TEMP_RAPID_CHANGE_WINDOW_MS = 5 * 60 * 1000L;
     private static final float TEMP_RAPID_CHANGE_DELTA_C = 10f;
     private static final long SENSOR_LOST_DEBOUNCE_MS = 2500L;
@@ -201,9 +222,13 @@ public class UsbService extends Service implements SerialInputOutputManager.List
     /** При включённом GPS первый успешный кадр без фильтра; сброс при потере температуры или новой сессии датчика. */
     private boolean initialTemperatureShownOnScreen = false;
 
-    /** Первое валидное значение после успешного подключения — сценарий «магнитола только включилась». */
-    private boolean pendingColdStartTempCheck = false;
-    private Float previousReadingCelsius = null;
+    /**
+     * Невидимое разрешение на предупреждение об обледенении: выдаётся при включении магнитолы
+     * (запуск сервиса), при переподключении к датчику и при выходе показанной температуры за
+     * порог + {@link #AIR_TEMP_COLD_REARM_DELTA_C}; расходуется успешным показом окна.
+     */
+    private final IceAlertPermission iceAlertPermission =
+            new IceAlertPermission(AIR_TEMP_COLD_THRESHOLD_C, AIR_TEMP_COLD_REARM_DELTA_C);
     private long lastSensorLostAlertElapsedMs = 0L;
 
     /** Идёт эпизод потери сигнала: на экране удерживается последнее показание, в фоне идут переподключения. */
@@ -271,6 +296,9 @@ public class UsbService extends Service implements SerialInputOutputManager.List
     public void onCreate() {
         super.onCreate();
         LocalDiagLog.i(this, TAG, "onCreate");
+        // Новый экземпляр сервиса — новая сессия: при включении магнитолы автозапуск (BootCompletedReceiver)
+        // поднимает сервис, и предупреждение об обледенении сразу получает разрешение на вывод.
+        grantIceAlertPermission("service created (head unit power-on)");
 //        usbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
         notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         settingsManager = new SettingsManager(this);
@@ -410,6 +438,9 @@ public class UsbService extends Service implements SerialInputOutputManager.List
 
     private void handleThermometerConnected() {
         connected = true;
+        // Подключение и особенно переподключение к датчику — повод выдать разрешение на предупреждение
+        // об обледенении заново, независимо от того, что показывала температура до потери сигнала.
+        grantIceAlertPermission("thermometer connected");
         boolean reconnectingLostSensor = sensorSignalLost;
         if (!reconnectingLostSensor) {
             resetTemperatureAlertSessionState();
@@ -808,6 +839,7 @@ public class UsbService extends Service implements SerialInputOutputManager.List
     WindowManager windowManager = null;
     View overlayView = null;
     private boolean overlayViewAttached = false;
+    LinearLayout overlayContainer = null;
     ImageView overlayTemperatureIcon = null;
     TextView tvTemperature = null;
     TextView tvVoltage = null;
@@ -977,8 +1009,6 @@ public class UsbService extends Service implements SerialInputOutputManager.List
     }
 
     private void resetTemperatureAlertSessionState() {
-        pendingColdStartTempCheck = true;
-        previousReadingCelsius = null;
         recentTemperatures.clear();
         unreliableTempAlertLatch = false;
         initialTemperatureShownOnScreen = false;
@@ -991,30 +1021,21 @@ public class UsbService extends Service implements SerialInputOutputManager.List
         lastKnownRawTemperatureFromDevice = "";
     }
 
-    private boolean isVehicleInMotion() {
-        return ENABLE_GPS_SPEED && lastSpeedKmh >= MOTION_MIN_SPEED_KMH;
-    }
-
     /**
-     * События из спецификации: холод при старте/в движении, скачок за 5 минут.
+     * События из спецификации: холод, скачок за 5 минут.
      * Предупреждение о недостоверности (скачки) при удержании «старой» температуры по правилу скорости отключается —
      * иначе датчик нагревается конвективно, экран морозится, история смешивает разные режимы.
+     *
+     * <p>Предупреждение об обледенении дополнительно ограничено невидимым разрешением
+     * {@link #iceAlertPermission}: оно выдаётся при включении магнитолы и переподключении к датчику
+     * и расходуется показом окна, поэтому у порога окно не повторяется на каждый кадр. И порог, и возврат
+     * разрешения считаются по показанному на экране значению — оно отличается от сырого с датчика
+     * из-за поправки и удержания показания при низкой средней скорости.
      */
     private void onTemperatureReadingForAlerts(float celsius, String formattedCalibratedDisp) {
         long now = System.currentTimeMillis();
 
-        if (pendingColdStartTempCheck) {
-            pendingColdStartTempCheck = false;
-            if (celsius < AIR_TEMP_COLD_THRESHOLD_C) {
-                showNotification(ALERT_TITLE_WARNING, MSG_AIR_TEMP_COLD, TEMP_ALERT_DURATION_SEC, true);
-            }
-        } else if (previousReadingCelsius != null && isVehicleInMotion()
-                && previousReadingCelsius >= AIR_TEMP_COLD_THRESHOLD_C
-                && celsius < AIR_TEMP_COLD_THRESHOLD_C) {
-            showNotification(ALERT_TITLE_WARNING, MSG_AIR_TEMP_COLD, TEMP_ALERT_DURATION_SEC, true);
-        }
-
-        previousReadingCelsius = celsius;
+        updateColdWarningPermission(formattedCalibratedDisp);
 
         if (isLowAverageSpeedThermalHoldActive(formattedCalibratedDisp)) {
             return;
@@ -1036,6 +1057,42 @@ public class UsbService extends Service implements SerialInputOutputManager.List
             }
         } else if (span < TEMP_RAPID_CHANGE_DELTA_C - 1f) {
             unreliableTempAlertLatch = false;
+        }
+    }
+
+    /**
+     * Разрешение на предупреждение об обледенении: возврат разрешения по показанной температуре
+     * и сам показ окна, если разрешение выдано, а на экране всё ещё ниже порога.
+     */
+    private void updateColdWarningPermission(String formattedCalibratedDisp) {
+        Float displayedCelsius = parseTemperatureCelsius(resolveTemperatureOverlayDisplay(formattedCalibratedDisp));
+        if (displayedCelsius == null) {
+            return;
+        }
+
+        if (iceAlertPermission.rearmIfWarmEnough(displayedCelsius)) {
+            LocalDiagLog.i(this, TAG, "ice alert permission granted again: displayed " + displayedCelsius
+                    + " °C > " + (AIR_TEMP_COLD_THRESHOLD_C + AIR_TEMP_COLD_REARM_DELTA_C) + " °C");
+        }
+
+        if (!iceAlertPermission.allowsWarning(displayedCelsius)) {
+            return;
+        }
+        if (showNotification(ALERT_TITLE_WARNING, MSG_AIR_TEMP_COLD, TEMP_ALERT_DURATION_SEC, true)) {
+            // Окно принято в очередь: разрешение расходуется и выдаётся снова только по явному событию,
+            // а не после любого следующего кадра у порога.
+            iceAlertPermission.consume();
+            LocalDiagLog.i(this, TAG, "ice alert shown at displayed " + displayedCelsius
+                    + " °C; permission consumed");
+        }
+    }
+
+    /** Выдать разрешение на предупреждение об обледенении (видно только в логе, окна нет). */
+    private void grantIceAlertPermission(String reason) {
+        boolean alreadyGranted = iceAlertPermission.isGranted();
+        iceAlertPermission.grant();
+        if (!alreadyGranted) {
+            LocalDiagLog.i(this, TAG, "ice alert permission granted: " + reason);
         }
     }
 
@@ -1240,6 +1297,7 @@ public class UsbService extends Service implements SerialInputOutputManager.List
         // Инфлейтим layout
         LayoutInflater inflater = (LayoutInflater) getSystemService(LAYOUT_INFLATER_SERVICE);
         overlayView = inflater.inflate(R.layout.overlay_layout, null);
+        overlayContainer = overlayView.findViewById(R.id.overlay_container);
         overlayTemperatureIcon = overlayView.findViewById(R.id.overlay_temperature_icon);
         tvTemperature = overlayView.findViewById(R.id.overlay_content_1);
         tvVoltage = overlayView.findViewById(R.id.overlay_content_2);
@@ -1356,6 +1414,7 @@ public class UsbService extends Service implements SerialInputOutputManager.List
     private void clearOverlayViewReferences() {
         overlayViewAttached = false;
         overlayView = null;
+        overlayContainer = null;
         overlayTemperatureIcon = null;
         tvTemperature = null;
         tvVoltage = null;
@@ -1388,17 +1447,30 @@ public class UsbService extends Service implements SerialInputOutputManager.List
                 && canDrawOverlayWindows();
     }
 
+    /** Итоговый масштаб данных оверлея: общий масштаб шрифта × масштаб данных текущего приложения. */
     private float overlayUiScaleFactor() {
-        return UiScalingPreferences.overlayFontScale(this);
+        return UiScalingPreferences.overlayFontScale(this) * currentDataSizeScale;
     }
 
     private int scaledOverlayWidthPx(boolean includeSpeedColumn) {
-        int base = includeSpeedColumn ? OVERLAY_WIDTH_WITH_SPEED : OVERLAY_WIDTH_NO_SPEED;
+        int base = currentOverlayVertical ? OVERLAY_WIDTH_VERTICAL_PX
+                : includeSpeedColumn ? OVERLAY_WIDTH_WITH_SPEED : OVERLAY_WIDTH_NO_SPEED;
         return Math.max(1, Math.round(base * overlayUiScaleFactor()));
     }
 
     private int scaledOverlayHeightPx() {
-        return Math.max(1, Math.round(OVERLAY_HEIGHT_PX * overlayUiScaleFactor()));
+        if (!currentOverlayVertical) {
+            return Math.max(1, Math.round(OVERLAY_HEIGHT_PX * overlayUiScaleFactor()));
+        }
+        int lines = 2; // значок + температура
+        if (tvVoltage != null && tvVoltage.getVisibility() != View.GONE) {
+            lines++;
+        }
+        if (tvSpeed != null && tvSpeed.getVisibility() != View.GONE) {
+            lines++;
+        }
+        return Math.max(1, Math.round((OVERLAY_VERTICAL_FRAME_PX + lines * OVERLAY_VERTICAL_LINE_PX)
+                * overlayUiScaleFactor()));
     }
 
     private int dpToRoundedPx(float dp) {
@@ -1406,7 +1478,7 @@ public class UsbService extends Service implements SerialInputOutputManager.List
                 TypedValue.COMPLEX_UNIT_DIP, dp, getResources().getDisplayMetrics()));
     }
 
-    /** Отступы корня, размер иконки и промежутки — вместе со шрифтом (масштаб из настроек). */
+    /** Отступы корня, размер иконки, ориентация блока и промежутки — вместе со шрифтом (масштаб из настроек). */
     private void applyOverlayChromeLayout() {
         if (overlayView == null) {
             return;
@@ -1425,24 +1497,58 @@ public class UsbService extends Service implements SerialInputOutputManager.List
                 int side = dpToRoundedPx(24f * sc);
                 mlp.width = side;
                 mlp.height = side;
-                mlp.setMarginEnd(dpToRoundedPx(4f * sc));
                 overlayTemperatureIcon.setLayoutParams(lp);
             }
         }
 
-        overlaySetInlineMarginEnd(tvTemperature, 4f * sc);
-        overlaySetInlineMarginEnd(tvVoltage, 4f * sc);
+        applyOverlayOrientation(currentOverlayVertical);
     }
 
-    private void overlaySetInlineMarginEnd(@Nullable TextView tv, float marginDpOrZero) {
-        if (tv == null || marginDpOrZero <= 0f || tv.getVisibility() == View.GONE) {
+    /**
+     * Ориентация блока данных: одна строка, как раньше (значок, температура, скорость в ряд),
+     * либо вертикально в несколько строк: значок термометра/снежинки, температура (°C), скорость (км/ч).
+     */
+    private void applyOverlayOrientation(boolean vertical) {
+        currentOverlayVertical = vertical;
+        if (overlayContainer == null) {
+            return;
+        }
+        overlayContainer.setOrientation(vertical ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+
+        float sc = overlayUiScaleFactor();
+        int lineGap = dpToRoundedPx(4f * sc);
+
+        if (overlayTemperatureIcon != null) {
+            ViewGroup.LayoutParams lp = overlayTemperatureIcon.getLayoutParams();
+            if (lp instanceof LinearLayout.LayoutParams) {
+                LinearLayout.LayoutParams llp = (LinearLayout.LayoutParams) lp;
+                llp.gravity = vertical ? Gravity.CENTER_HORIZONTAL : Gravity.CENTER_VERTICAL;
+                llp.setMarginEnd(vertical ? 0 : lineGap);
+                llp.bottomMargin = vertical ? lineGap : 0;
+                overlayTemperatureIcon.setLayoutParams(lp);
+            }
+        }
+
+        setOverlayLineParams(tvTemperature, vertical, true);
+        setOverlayLineParams(tvVoltage, vertical, true);
+        setOverlayLineParams(tvSpeed, vertical, false);
+    }
+
+    /** Гравитация и отступы одного элемента блока данных в выбранной ориентации. */
+    private void setOverlayLineParams(@Nullable TextView tv, boolean vertical, boolean lineGapAfter) {
+        if (tv == null) {
             return;
         }
         ViewGroup.LayoutParams lp = tv.getLayoutParams();
-        if (lp instanceof ViewGroup.MarginLayoutParams) {
-            ((ViewGroup.MarginLayoutParams) lp).setMarginEnd(dpToRoundedPx(marginDpOrZero));
-            tv.setLayoutParams(lp);
+        if (!(lp instanceof LinearLayout.LayoutParams)) {
+            return;
         }
+        int gap = dpToRoundedPx(4f * overlayUiScaleFactor());
+        LinearLayout.LayoutParams llp = (LinearLayout.LayoutParams) lp;
+        llp.gravity = vertical ? Gravity.CENTER_HORIZONTAL : Gravity.CENTER_VERTICAL;
+        llp.setMarginEnd(vertical || !lineGapAfter ? 0 : gap);
+        llp.bottomMargin = vertical && lineGapAfter ? gap : 0;
+        tv.setLayoutParams(lp);
     }
 
     /** Пересчёт размеров окна и якорной позиции после смены масштаба оверлея. */
@@ -1472,7 +1578,7 @@ public class UsbService extends Service implements SerialInputOutputManager.List
         if (overlayView == null) {
             return;
         }
-        float scale = UiScalingPreferences.overlayFontScale(this);
+        float scale = overlayUiScaleFactor();
         setOverlayTextSizeSp(tvTemperature, UiScalingPreferences.OVERLAY_PRIMARY_SP * scale);
         setOverlayTextSizeSp(tvVoltage, UiScalingPreferences.OVERLAY_PRIMARY_SP * scale);
         setOverlayTextSizeSp(tvSpeed, UiScalingPreferences.OVERLAY_PRIMARY_SP * scale);
@@ -1829,8 +1935,12 @@ public class UsbService extends Service implements SerialInputOutputManager.List
         int overlayAlphaBottom = settingsManager.getOverlayAlphaBottomForApp(packageName);
         int xPercent = settingsManager.getOverlayPositionXPercentForApp(packageName);
         int yPercent = settingsManager.getOverlayPositionYPercentForApp(packageName);
+        boolean overlayVertical = settingsManager.isOverlayVerticalForApp(packageName);
+        float dataSizeScale = settingsManager.getOverlayDataSizeScaleForApp(packageName);
         lastOverlayPositionXPercent = xPercent;
         lastOverlayPositionYPercent = yPercent;
+        currentOverlayVertical = overlayVertical;
+        currentDataSizeScale = AppSettings.clampOverlayDataSizeScale(dataSizeScale);
 
         // Логируем настройки
         if (appSettings != null) {
@@ -1839,7 +1949,9 @@ public class UsbService extends Service implements SerialInputOutputManager.List
                       ", speedVisible=" + overlaySpeedVisible
                       + ", alphaTop=" + overlayAlphaTop
                       + ", alphaBottom=" + overlayAlphaBottom
-                      + ", position=" + xPercent + "%," + yPercent + "%");
+                      + ", position=" + xPercent + "%," + yPercent + "%"
+                      + ", vertical=" + overlayVertical
+                      + ", dataSizeScale=" + currentDataSizeScale);
         } else {
             Log.d(TAG, "  No settings found for this app, using defaults (overlay=false, notifications=false, speedVisible=false, custom alpha defaults)");
         }
@@ -1940,8 +2052,8 @@ public class UsbService extends Service implements SerialInputOutputManager.List
                 overlayH = scaledOverlayHeightPx();
             }
 
-            xPercent = AppSettings.clampOverlayPositionPercent(xPercent);
-            yPercent = AppSettings.clampOverlayPositionPercent(yPercent);
+            xPercent = AppSettings.clampOverlayPositionXPercent(xPercent);
+            yPercent = AppSettings.clampOverlayPositionYPercent(yPercent);
 
             params.gravity = Gravity.CENTER;
 
@@ -2084,18 +2196,21 @@ public class UsbService extends Service implements SerialInputOutputManager.List
      * @param body Текст уведомления
      * @param durationSeconds Время показа в секундах
      * @param playAlertSound проигрывать звук (только для предупреждений и ошибок)
+     * @return {@code true}, если окно принято в очередь и будет показано; {@code false} — показа нет
+     *         (нет разрешения на оверлей или уведомления для текущего приложения отключены). Нужно тому,
+     *         кто расходует разрешение на событие: {@link #updateColdWarningPermission(String)}.
      */
-    public void showNotification(String title, String body, int durationSeconds, boolean playAlertSound) {
+    public boolean showNotification(String title, String body, int durationSeconds, boolean playAlertSound) {
         if (!isNotificationWindowAvailable()) {
             Log.w(TAG, "Floating notification skipped: overlay window is unavailable");
-            return;
+            return false;
         }
         // Проверяем, включены ли уведомления для текущего приложения
         if (!currentForegroundApp.isEmpty()) {
             boolean notificationsEnabled = settingsManager.isNotificationsEnabledForApp(currentForegroundApp);
             if (!notificationsEnabled) {
                 Log.d(TAG, "Notifications disabled for app: " + currentForegroundApp);
-                return;
+                return false;
             }
         }
 
@@ -2105,11 +2220,12 @@ public class UsbService extends Service implements SerialInputOutputManager.List
         if (!isNotificationShowing) {
             displayNextNotification();
         }
+        return true;
     }
 
     /** Информационное окно без звука. */
-    public void showNotification(String title, String body, int durationSeconds) {
-        showNotification(title, body, durationSeconds, false);
+    public boolean showNotification(String title, String body, int durationSeconds) {
+        return showNotification(title, body, durationSeconds, false);
     }
 
     /**
