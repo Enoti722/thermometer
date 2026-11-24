@@ -52,6 +52,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -88,12 +89,13 @@ public class UsbService extends Service implements SerialInputOutputManager.List
     /** Базовая высота окна оверлея (px), совпадает с layout до масштабирования. */
     private static final int OVERLAY_HEIGHT_PX = 100;
     /**
-     * Вертикальный блок данных (значок, температура, скорость — строками): базовая ширина окна
-     * и оценка высоты (px до масштабирования): рамка + по строке на каждый элемент.
+     * Вертикальный блок данных (значок, температура, скорость — строками): ширина окна в dp
+     * (до масштабирования) — с запасом к самой длинной строке, чтобы текст не переносился.
+     * Высота окна — WRAP_CONTENT: плотности экранов у магнитол разные (mdpi…xhdpi), и высота
+     * содержимого в пикселях от плотности зависит, поэтому размер «по содержимому» — единственный
+     * вариант, при котором строки гарантированно не обрежутся.
      */
-    private static final int OVERLAY_WIDTH_VERTICAL_PX = 240;
-    private static final int OVERLAY_VERTICAL_LINE_PX = 34;
-    private static final int OVERLAY_VERTICAL_FRAME_PX = 26;
+    private static final int OVERLAY_WIDTH_VERTICAL_DP = 130;
 
     /** Последние применённые проценты якоря (для пересчёта при смене масштаба UI). */
     private int lastOverlayPositionXPercent = 50;
@@ -1453,24 +1455,21 @@ public class UsbService extends Service implements SerialInputOutputManager.List
     }
 
     private int scaledOverlayWidthPx(boolean includeSpeedColumn) {
-        int base = currentOverlayVertical ? OVERLAY_WIDTH_VERTICAL_PX
+        int base = currentOverlayVertical ? dpToRoundedPx(OVERLAY_WIDTH_VERTICAL_DP)
                 : includeSpeedColumn ? OVERLAY_WIDTH_WITH_SPEED : OVERLAY_WIDTH_NO_SPEED;
         return Math.max(1, Math.round(base * overlayUiScaleFactor()));
     }
 
+    /**
+     * Высота окна оверлея: вертикальный блок заворачивается по содержимому (WRAP_CONTENT) —
+     * окно ровно по высоте строк на любой плотности экрана. Горизонтальный режим — как раньше,
+     * фиксированные базовые пиксели.
+     */
     private int scaledOverlayHeightPx() {
         if (!currentOverlayVertical) {
             return Math.max(1, Math.round(OVERLAY_HEIGHT_PX * overlayUiScaleFactor()));
         }
-        int lines = 2; // значок + температура
-        if (tvVoltage != null && tvVoltage.getVisibility() != View.GONE) {
-            lines++;
-        }
-        if (tvSpeed != null && tvSpeed.getVisibility() != View.GONE) {
-            lines++;
-        }
-        return Math.max(1, Math.round((OVERLAY_VERTICAL_FRAME_PX + lines * OVERLAY_VERTICAL_LINE_PX)
-                * overlayUiScaleFactor()));
+        return WindowManager.LayoutParams.WRAP_CONTENT;
     }
 
     private int dpToRoundedPx(float dp) {
@@ -1514,6 +1513,15 @@ public class UsbService extends Service implements SerialInputOutputManager.List
             return;
         }
         overlayContainer.setOrientation(vertical ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+
+        // Блок данных всегда центрирован в окне: гравитация задаётся явно, а не только из layout,
+        // чтобы поведение не зависело от прошивки.
+        ViewGroup.LayoutParams containerLp = overlayContainer.getLayoutParams();
+        if (containerLp instanceof FrameLayout.LayoutParams) {
+            FrameLayout.LayoutParams flp = (FrameLayout.LayoutParams) containerLp;
+            flp.gravity = Gravity.CENTER;
+            overlayContainer.setLayoutParams(containerLp);
+        }
 
         float sc = overlayUiScaleFactor();
         int lineGap = dpToRoundedPx(4f * sc);
@@ -2029,7 +2037,9 @@ public class UsbService extends Service implements SerialInputOutputManager.List
 
             int overlayW = params.width > 0 ? params.width : overlayView.getWidth();
             int overlayH = params.height > 0 ? params.height : overlayView.getHeight();
-            if (overlayW <= 0 || overlayH <= 0) {
+            // Вертикальный блок (WRAP_CONTENT, params.height < 0): актуальную высоту берём замером —
+            // getHeight() сразу после updateViewLayout ещё держит прошлое значение.
+            if (overlayW <= 0 || overlayH <= 0 || params.height < 0) {
                 int specW = params.width > 0
                         ? View.MeasureSpec.makeMeasureSpec(params.width, View.MeasureSpec.EXACTLY)
                         : View.MeasureSpec.makeMeasureSpec(screenWidth, View.MeasureSpec.AT_MOST);
@@ -2040,7 +2050,7 @@ public class UsbService extends Service implements SerialInputOutputManager.List
                 if (overlayW <= 0) {
                     overlayW = overlayView.getMeasuredWidth();
                 }
-                if (overlayH <= 0) {
+                if (overlayH <= 0 || params.height < 0) {
                     overlayH = overlayView.getMeasuredHeight();
                 }
             }
