@@ -51,19 +51,27 @@ public class SettingsManager {
             JSONArray array = new JSONArray(json);
             for (int i = 0; i < array.length(); i++) {
                 JSONObject obj = array.getJSONObject(i);
-                list.add(new AppSettings(
+                AppSettings settings = new AppSettings(
                         obj.getString("packageName"),
-                        obj.getString("appName"),
-                        obj.getBoolean("overlayEnabled"),
-                        obj.getBoolean("notificationsEnabled"),
-                        UsbService.ENABLE_GPS_SPEED && obj.optBoolean("overlaySpeedVisible", false),
-                        obj.optInt("overlayAlphaTop", AppSettings.DEFAULT_OVERLAY_ALPHA_TOP),
-                        obj.optInt("overlayAlphaBottom", AppSettings.DEFAULT_OVERLAY_ALPHA_BOTTOM),
-                        obj.optInt("overlayPositionXPercent", 50),
-                        obj.optInt("overlayPositionYPercent", 5),
-                        obj.optBoolean("overlayVertical", false),
-                        (float) obj.optDouble("overlayDataSizeScale", AppSettings.DEFAULT_OVERLAY_DATA_SIZE_SCALE)
-                ));
+                        obj.getString("appName"));
+                settings.setOverlayEnabled(obj.getBoolean("overlayEnabled"));
+                settings.setNotificationsEnabled(obj.getBoolean("notificationsEnabled"));
+                settings.setOverlaySpeedVisible(
+                        UsbService.ENABLE_GPS_SPEED && obj.optBoolean("overlaySpeedVisible", false));
+                settings.setOverlayAlphaTop(obj.optInt("overlayAlphaTop", AppSettings.DEFAULT_OVERLAY_ALPHA_TOP));
+                settings.setOverlayAlphaBottom(obj.optInt("overlayAlphaBottom", AppSettings.DEFAULT_OVERLAY_ALPHA_BOTTOM));
+                settings.setOverlayPositionXPercent(obj.optInt("overlayPositionXPercent", 50));
+                settings.setOverlayPositionYPercent(obj.optInt("overlayPositionYPercent", 5));
+                settings.setOverlayVertical(obj.optBoolean("overlayVertical", false));
+                settings.setOverlayDataSizeScale(
+                        (float) obj.optDouble("overlayDataSizeScale", AppSettings.DEFAULT_OVERLAY_DATA_SIZE_SCALE));
+                settings.setOverlayContentOffsetXPercent(obj.optInt("overlayContentOffsetXPercent", 0));
+                settings.setOverlayContentOffsetYPercent(obj.optInt("overlayContentOffsetYPercent", 0));
+                settings.setOverlayPlateWidthPercent(
+                        obj.optInt("overlayPlateWidthPercent", AppSettings.DEFAULT_OVERLAY_PLATE_SIZE_PERCENT));
+                settings.setOverlayPlateHeightPercent(
+                        obj.optInt("overlayPlateHeightPercent", AppSettings.DEFAULT_OVERLAY_PLATE_SIZE_PERCENT));
+                list.add(settings);
             }
         } catch (JSONException e) {
             e.printStackTrace();
@@ -89,6 +97,10 @@ public class SettingsManager {
                 obj.put("overlayPositionYPercent", settings.getOverlayPositionYPercent());
                 obj.put("overlayVertical", settings.isOverlayVertical());
                 obj.put("overlayDataSizeScale", (double) settings.getOverlayDataSizeScale());
+                obj.put("overlayContentOffsetXPercent", settings.getOverlayContentOffsetXPercent());
+                obj.put("overlayContentOffsetYPercent", settings.getOverlayContentOffsetYPercent());
+                obj.put("overlayPlateWidthPercent", settings.getOverlayPlateWidthPercent());
+                obj.put("overlayPlateHeightPercent", settings.getOverlayPlateHeightPercent());
                 array.put(obj);
             }
         } catch (JSONException e) {
@@ -217,5 +229,41 @@ public class SettingsManager {
             return appSettings.getOverlayDataSizeScale();
         }
         return AppSettings.DEFAULT_OVERLAY_DATA_SIZE_SCALE;
+    }
+
+    /** Смещение содержимого (значок и тексты) внутри плашки по горизонтали, % от ширины содержимого. */
+    public int getOverlayContentOffsetXPercentForApp(String packageName) {
+        AppSettings appSettings = getAppSettings(packageName);
+        if (appSettings != null) {
+            return appSettings.getOverlayContentOffsetXPercent();
+        }
+        return 0;
+    }
+
+    /** Смещение содержимого внутри плашки по вертикали, % от высоты содержимого. */
+    public int getOverlayContentOffsetYPercentForApp(String packageName) {
+        AppSettings appSettings = getAppSettings(packageName);
+        if (appSettings != null) {
+            return appSettings.getOverlayContentOffsetYPercent();
+        }
+        return 0;
+    }
+
+    /** Ширина плашки (фона) оверлея, % от текущей. */
+    public int getOverlayPlateWidthPercentForApp(String packageName) {
+        AppSettings appSettings = getAppSettings(packageName);
+        if (appSettings != null) {
+            return appSettings.getOverlayPlateWidthPercent();
+        }
+        return AppSettings.DEFAULT_OVERLAY_PLATE_SIZE_PERCENT;
+    }
+
+    /** Высота плашки (фона) оверлея, % от текущей. */
+    public int getOverlayPlateHeightPercentForApp(String packageName) {
+        AppSettings appSettings = getAppSettings(packageName);
+        if (appSettings != null) {
+            return appSettings.getOverlayPlateHeightPercent();
+        }
+        return AppSettings.DEFAULT_OVERLAY_PLATE_SIZE_PERCENT;
     }
 }

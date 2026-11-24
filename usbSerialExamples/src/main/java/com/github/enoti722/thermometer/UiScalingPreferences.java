@@ -12,6 +12,12 @@ public final class UiScalingPreferences {
     /** float, множитель: 1.0 = 100% */
     public static final String KEY_OVERLAY_FONT_SCALE = "overlay_font_scale";
     public static final String KEY_ALERT_FONT_SCALE = "alert_font_scale";
+    /** int, % от размера содержимого: смещение содержимого (значок и тексты) внутри плашки оверлея. */
+    public static final String KEY_OVERLAY_CONTENT_OFFSET_X = "overlay_content_offset_x";
+    public static final String KEY_OVERLAY_CONTENT_OFFSET_Y = "overlay_content_offset_y";
+    /** int, % от текущего размера: ширина/высота плашки (фона) оверлея. */
+    public static final String KEY_OVERLAY_PLATE_WIDTH_PERCENT = "overlay_plate_width_percent";
+    public static final String KEY_OVERLAY_PLATE_HEIGHT_PERCENT = "overlay_plate_height_percent";
 
     /** Базовые размеры (sp до масштабирования), совпадают с layout. */
     public static final float OVERLAY_PRIMARY_SP = 16f;
@@ -37,6 +43,30 @@ public final class UiScalingPreferences {
 
     public static float alertFontScale(Context context) {
         return clampScale(prefs(context).getFloat(KEY_ALERT_FONT_SCALE, 1f));
+    }
+
+    /** Общее смещение содержимого внутри плашки по горизонтали, % от ширины содержимого. */
+    public static int overlayContentOffsetXPercent(Context context) {
+        return AppSettings.clampOverlayContentOffsetPercent(
+                prefs(context).getInt(KEY_OVERLAY_CONTENT_OFFSET_X, 0));
+    }
+
+    /** Общее смещение содержимого внутри плашки по вертикали, % от высоты содержимого. */
+    public static int overlayContentOffsetYPercent(Context context) {
+        return AppSettings.clampOverlayContentOffsetPercent(
+                prefs(context).getInt(KEY_OVERLAY_CONTENT_OFFSET_Y, 0));
+    }
+
+    /** Общая ширина плашки (фона) оверлея, % от текущей. */
+    public static int overlayPlateWidthPercent(Context context) {
+        return AppSettings.clampOverlayPlateSizePercent(
+                prefs(context).getInt(KEY_OVERLAY_PLATE_WIDTH_PERCENT, AppSettings.DEFAULT_OVERLAY_PLATE_SIZE_PERCENT));
+    }
+
+    /** Общая высота плашки (фона) оверлея, % от текущей. */
+    public static int overlayPlateHeightPercent(Context context) {
+        return AppSettings.clampOverlayPlateSizePercent(
+                prefs(context).getInt(KEY_OVERLAY_PLATE_HEIGHT_PERCENT, AppSettings.DEFAULT_OVERLAY_PLATE_SIZE_PERCENT));
     }
 
     public static int overlaySeekProgress(Context context) {

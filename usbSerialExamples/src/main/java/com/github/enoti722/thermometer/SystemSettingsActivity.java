@@ -31,6 +31,14 @@ public class SystemSettingsActivity extends AppCompatActivity {
     private TextView textAlertPercent;
     private SeekBar seekOverlay;
     private SeekBar seekAlert;
+    private TextView textOverlayPlateWidth;
+    private TextView textOverlayPlateHeight;
+    private SeekBar seekOverlayPlateWidth;
+    private SeekBar seekOverlayPlateHeight;
+    private TextView textOverlayContentOffsetX;
+    private TextView textOverlayContentOffsetY;
+    private SeekBar seekOverlayContentOffsetX;
+    private SeekBar seekOverlayContentOffsetY;
     private TextView textTempSpeedGate;
     private SeekBar seekTempSpeedGate;
     private TextView textTempAvgWindow;
@@ -68,6 +76,18 @@ public class SystemSettingsActivity extends AppCompatActivity {
         textAlertPercent = findViewById(R.id.text_alert_percent);
         seekOverlay = findViewById(R.id.seek_overlay_scale);
         seekAlert = findViewById(R.id.seek_alert_scale);
+        textOverlayPlateWidth = findViewById(R.id.text_overlay_plate_width);
+        textOverlayPlateHeight = findViewById(R.id.text_overlay_plate_height);
+        seekOverlayPlateWidth = findViewById(R.id.seek_overlay_plate_width);
+        seekOverlayPlateHeight = findViewById(R.id.seek_overlay_plate_height);
+        seekOverlayPlateWidth.setMax(AppSettings.OVERLAY_PLATE_SIZE_SEEK_MAX);
+        seekOverlayPlateHeight.setMax(AppSettings.OVERLAY_PLATE_SIZE_SEEK_MAX);
+        textOverlayContentOffsetX = findViewById(R.id.text_overlay_content_offset_x);
+        textOverlayContentOffsetY = findViewById(R.id.text_overlay_content_offset_y);
+        seekOverlayContentOffsetX = findViewById(R.id.seek_overlay_content_offset_x);
+        seekOverlayContentOffsetY = findViewById(R.id.seek_overlay_content_offset_y);
+        seekOverlayContentOffsetX.setMax(AppSettings.OVERLAY_CONTENT_OFFSET_SEEK_MAX);
+        seekOverlayContentOffsetY.setMax(AppSettings.OVERLAY_CONTENT_OFFSET_SEEK_MAX);
         textTempSpeedGate = findViewById(R.id.text_temp_speed_gate);
         seekTempSpeedGate = findViewById(R.id.seek_temp_speed_gate);
         textTempAvgWindow = findViewById(R.id.text_temp_avg_window);
@@ -101,6 +121,14 @@ public class SystemSettingsActivity extends AppCompatActivity {
 
         seekOverlay.setProgress(UiScalingPreferences.overlaySeekProgress(this));
         seekAlert.setProgress(UiScalingPreferences.alertSeekProgress(this));
+        seekOverlayPlateWidth.setProgress(
+                AppSettings.overlayPlateSizeSeekProgressFromPercent(UiScalingPreferences.overlayPlateWidthPercent(this)));
+        seekOverlayPlateHeight.setProgress(
+                AppSettings.overlayPlateSizeSeekProgressFromPercent(UiScalingPreferences.overlayPlateHeightPercent(this)));
+        seekOverlayContentOffsetX.setProgress(
+                AppSettings.overlayContentOffsetSeekProgressFromPercent(UiScalingPreferences.overlayContentOffsetXPercent(this)));
+        seekOverlayContentOffsetY.setProgress(
+                AppSettings.overlayContentOffsetSeekProgressFromPercent(UiScalingPreferences.overlayContentOffsetYPercent(this)));
         seekTempSpeedGate.setProgress(Math.round(SystemSettingsPreferences.tempSpeedGateKmh(this)));
         seekTempAvgWindow.setProgress(SystemSettingsPreferences.tempAverageWindowMinutes(this));
         seekThermometerOffset.setProgress(SystemSettingsPreferences.thermometerOffsetSeekProgress(this));
@@ -108,6 +136,10 @@ public class SystemSettingsActivity extends AppCompatActivity {
 
         updateOverlayLabel(seekOverlay.getProgress());
         updateAlertLabel(seekAlert.getProgress());
+        updatePlateWidthLabel(seekOverlayPlateWidth.getProgress());
+        updatePlateHeightLabel(seekOverlayPlateHeight.getProgress());
+        updateContentOffsetXLabel(seekOverlayContentOffsetX.getProgress());
+        updateContentOffsetYLabel(seekOverlayContentOffsetY.getProgress());
         updateSpeedGateLabel(seekTempSpeedGate.getProgress());
         updateAvgWindowLabel(seekTempAvgWindow.getProgress());
         updateOffsetLabel(seekThermometerOffset.getProgress());
@@ -120,6 +152,14 @@ public class SystemSettingsActivity extends AppCompatActivity {
                     updateOverlayLabel(progress);
                 } else if (seekBar == seekAlert) {
                     updateAlertLabel(progress);
+                } else if (seekBar == seekOverlayPlateWidth) {
+                    updatePlateWidthLabel(progress);
+                } else if (seekBar == seekOverlayPlateHeight) {
+                    updatePlateHeightLabel(progress);
+                } else if (seekBar == seekOverlayContentOffsetX) {
+                    updateContentOffsetXLabel(progress);
+                } else if (seekBar == seekOverlayContentOffsetY) {
+                    updateContentOffsetYLabel(progress);
                 } else if (seekBar == seekTempSpeedGate) {
                     updateSpeedGateLabel(progress);
                 } else if (seekBar == seekTempAvgWindow) {
@@ -144,6 +184,10 @@ public class SystemSettingsActivity extends AppCompatActivity {
         };
         seekOverlay.setOnSeekBarChangeListener(saver);
         seekAlert.setOnSeekBarChangeListener(saver);
+        seekOverlayPlateWidth.setOnSeekBarChangeListener(saver);
+        seekOverlayPlateHeight.setOnSeekBarChangeListener(saver);
+        seekOverlayContentOffsetX.setOnSeekBarChangeListener(saver);
+        seekOverlayContentOffsetY.setOnSeekBarChangeListener(saver);
         seekTempSpeedGate.setOnSeekBarChangeListener(saver);
         seekTempAvgWindow.setOnSeekBarChangeListener(saver);
         seekThermometerOffset.setOnSeekBarChangeListener(saver);
@@ -197,6 +241,26 @@ public class SystemSettingsActivity extends AppCompatActivity {
 
     private void updateAlertLabel(int seekProgress) {
         textAlertPercent.setText(formatPercent(seekProgress));
+    }
+
+    private void updatePlateWidthLabel(int seekProgress) {
+        textOverlayPlateWidth.setText(getString(R.string.system_settings_overlay_plate_width_value,
+                AppSettings.overlayPlateSizeFromSeekProgress(seekProgress)));
+    }
+
+    private void updatePlateHeightLabel(int seekProgress) {
+        textOverlayPlateHeight.setText(getString(R.string.system_settings_overlay_plate_height_value,
+                AppSettings.overlayPlateSizeFromSeekProgress(seekProgress)));
+    }
+
+    private void updateContentOffsetXLabel(int seekProgress) {
+        textOverlayContentOffsetX.setText(getString(R.string.system_settings_overlay_content_offset_x_value,
+                AppSettings.overlayContentOffsetFromSeekProgress(seekProgress)));
+    }
+
+    private void updateContentOffsetYLabel(int seekProgress) {
+        textOverlayContentOffsetY.setText(getString(R.string.system_settings_overlay_content_offset_y_value,
+                AppSettings.overlayContentOffsetFromSeekProgress(seekProgress)));
     }
 
     private void updateSpeedGateLabel(int kmh) {
@@ -308,6 +372,14 @@ public class SystemSettingsActivity extends AppCompatActivity {
                         UiScalingPreferences.seekProgressToScale(seekOverlay.getProgress()))
                 .putFloat(UiScalingPreferences.KEY_ALERT_FONT_SCALE,
                         UiScalingPreferences.seekProgressToScale(seekAlert.getProgress()))
+                .putInt(UiScalingPreferences.KEY_OVERLAY_PLATE_WIDTH_PERCENT,
+                        AppSettings.overlayPlateSizeFromSeekProgress(seekOverlayPlateWidth.getProgress()))
+                .putInt(UiScalingPreferences.KEY_OVERLAY_PLATE_HEIGHT_PERCENT,
+                        AppSettings.overlayPlateSizeFromSeekProgress(seekOverlayPlateHeight.getProgress()))
+                .putInt(UiScalingPreferences.KEY_OVERLAY_CONTENT_OFFSET_X,
+                        AppSettings.overlayContentOffsetFromSeekProgress(seekOverlayContentOffsetX.getProgress()))
+                .putInt(UiScalingPreferences.KEY_OVERLAY_CONTENT_OFFSET_Y,
+                        AppSettings.overlayContentOffsetFromSeekProgress(seekOverlayContentOffsetY.getProgress()))
                 .putFloat(SystemSettingsPreferences.KEY_TEMP_SPEED_GATE_KMH, seekTempSpeedGate.getProgress())
                 .putInt(SystemSettingsPreferences.KEY_TEMP_AVG_WINDOW_MIN, seekTempAvgWindow.getProgress())
                 .putFloat(SystemSettingsPreferences.KEY_THERMOMETER_OFFSET_C,

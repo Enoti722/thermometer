@@ -113,4 +113,68 @@ public class AppSettingsTest {
         assertFalse(settings.isOverlayVertical());
         assertEquals(AppSettings.DEFAULT_OVERLAY_DATA_SIZE_SCALE, settings.getOverlayDataSizeScale(), 0f);
     }
+
+    @Test
+    public void contentOffsetRangeAndSeekMapping() {
+        assertEquals(-200, AppSettings.clampOverlayContentOffsetPercent(-500));
+        assertEquals(-200, AppSettings.clampOverlayContentOffsetPercent(-200));
+        assertEquals(50, AppSettings.clampOverlayContentOffsetPercent(50));
+        assertEquals(200, AppSettings.clampOverlayContentOffsetPercent(200));
+        assertEquals(200, AppSettings.clampOverlayContentOffsetPercent(500));
+
+        // Ползунок: 0 → -200%, середина → 0%, конец → +200%
+        assertEquals(-200, AppSettings.overlayContentOffsetFromSeekProgress(0));
+        assertEquals(0, AppSettings.overlayContentOffsetFromSeekProgress(
+                AppSettings.OVERLAY_CONTENT_OFFSET_SEEK_MAX / 2));
+        assertEquals(200, AppSettings.overlayContentOffsetFromSeekProgress(
+                AppSettings.OVERLAY_CONTENT_OFFSET_SEEK_MAX));
+
+        assertEquals(0, AppSettings.overlayContentOffsetSeekProgressFromPercent(-200));
+        assertEquals(AppSettings.OVERLAY_CONTENT_OFFSET_SEEK_MAX / 2,
+                AppSettings.overlayContentOffsetSeekProgressFromPercent(0));
+        assertEquals(AppSettings.OVERLAY_CONTENT_OFFSET_SEEK_MAX,
+                AppSettings.overlayContentOffsetSeekProgressFromPercent(200));
+    }
+
+    @Test
+    public void plateSizeRangeAndSeekMapping() {
+        assertEquals(50, AppSettings.clampOverlayPlateSizePercent(10));
+        assertEquals(50, AppSettings.clampOverlayPlateSizePercent(50));
+        assertEquals(100, AppSettings.clampOverlayPlateSizePercent(100));
+        assertEquals(300, AppSettings.clampOverlayPlateSizePercent(300));
+        assertEquals(300, AppSettings.clampOverlayPlateSizePercent(1000));
+
+        // Ползунок: 0 → 50%, 10 → 100%, конец → 300%
+        assertEquals(50, AppSettings.overlayPlateSizeFromSeekProgress(0));
+        assertEquals(100, AppSettings.overlayPlateSizeFromSeekProgress(10));
+        assertEquals(300, AppSettings.overlayPlateSizeFromSeekProgress(
+                AppSettings.OVERLAY_PLATE_SIZE_SEEK_MAX));
+
+        assertEquals(0, AppSettings.overlayPlateSizeSeekProgressFromPercent(50));
+        assertEquals(10, AppSettings.overlayPlateSizeSeekProgressFromPercent(100));
+        assertEquals(AppSettings.OVERLAY_PLATE_SIZE_SEEK_MAX,
+                AppSettings.overlayPlateSizeSeekProgressFromPercent(300));
+    }
+
+    @Test
+    public void newAppDefaultsToCenteredContentAndFullPlate() {
+        AppSettings settings = new AppSettings("com.example.app", "Example");
+        assertEquals(0, settings.getOverlayContentOffsetXPercent());
+        assertEquals(0, settings.getOverlayContentOffsetYPercent());
+        assertEquals(AppSettings.DEFAULT_OVERLAY_PLATE_SIZE_PERCENT, settings.getOverlayPlateWidthPercent());
+        assertEquals(AppSettings.DEFAULT_OVERLAY_PLATE_SIZE_PERCENT, settings.getOverlayPlateHeightPercent());
+    }
+
+    @Test
+    public void contentOffsetAndPlateSettersClamp() {
+        AppSettings settings = new AppSettings("com.example.app", "Example");
+        settings.setOverlayContentOffsetXPercent(-500);
+        settings.setOverlayContentOffsetYPercent(999);
+        settings.setOverlayPlateWidthPercent(10);
+        settings.setOverlayPlateHeightPercent(9999);
+        assertEquals(-200, settings.getOverlayContentOffsetXPercent());
+        assertEquals(200, settings.getOverlayContentOffsetYPercent());
+        assertEquals(50, settings.getOverlayPlateWidthPercent());
+        assertEquals(300, settings.getOverlayPlateHeightPercent());
+    }
 }

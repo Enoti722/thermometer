@@ -49,6 +49,8 @@
    - Кнопка сброса позиции оверлея к центру (50%, 50%)
    - Переключатель **вертикального отображения данных**: значок термометра/снежинки, температура (°C), скорость (км/ч) — каждый элемент с новой строки
    - Ползунок **размера отображаемых данных** (x0.25 … x4.0; x1 — размер как сейчас)
+   - Ползунки **смещения содержимого внутри плашки** (горизонталь/вертикаль, -200…200%): сдвиг значка и текстов в процентах от размера самого содержимого; итог = общая настройка + эта
+   - Ползунки **размера плашки (фона)** (ширина/высота, 50…300%): 100% — текущий размер; итог = общая настройка × эта / 100
    - Кнопка удаления настроек приложения в заголовке
 
 ### Классы данных
@@ -60,6 +62,8 @@
   - overlaySpeedVisible, overlayAlphaTop, overlayAlphaBottom
   - overlayVertical (данные вертикально в несколько строк)
   - overlayDataSizeScale (масштаб отображаемых данных, x0.25 … x4.0)
+  - overlayContentOffsetXPercent, overlayContentOffsetYPercent (-200…200; смещение содержимого внутри плашки)
+  - overlayPlateWidthPercent, overlayPlateHeightPercent (50…300; размер плашки)
   - isSelected (для режима редактирования)
   
 - **SettingsManager** - Менеджер для работы с настройками (SharedPreferences)
@@ -105,7 +109,11 @@
     "overlayPositionXPercent": 50,
     "overlayPositionYPercent": 5,
     "overlayVertical": false,
-    "overlayDataSizeScale": 1.0
+    "overlayDataSizeScale": 1.0,
+    "overlayContentOffsetXPercent": 0,
+    "overlayContentOffsetYPercent": 0,
+    "overlayPlateWidthPercent": 100,
+    "overlayPlateHeightPercent": 100
   }
 ]
 ```
@@ -128,6 +136,10 @@ int getOverlayPositionXPercentForApp(String packageName)
 int getOverlayPositionYPercentForApp(String packageName)
 boolean isOverlayVerticalForApp(String packageName)
 float getOverlayDataSizeScaleForApp(String packageName)
+int getOverlayContentOffsetXPercentForApp(String packageName)
+int getOverlayContentOffsetYPercentForApp(String packageName)
+int getOverlayPlateWidthPercentForApp(String packageName)
+int getOverlayPlateHeightPercentForApp(String packageName)
 ```
 
 Эти методы возвращают настройки для конкретного приложения, если они есть, иначе возвращают значения по умолчанию:
@@ -137,6 +149,19 @@ float getOverlayDataSizeScaleForApp(String packageName)
 - `getOverlayPositionYPercentForApp`: **5** (верх экрана)
 - `isOverlayVerticalForApp`: **false** (данные в одну строку)
 - `getOverlayDataSizeScaleForApp`: **1.0** (размер как сейчас)
+- `getOverlayContentOffsetXPercentForApp` / `...Y...`: **0** (содержимое по центру плашки)
+- `getOverlayPlateWidthPercentForApp` / `...Height...`: **100** (текущий размер плашки)
+
+### Общие настройки внешнего вида оверлея
+
+В «Настройках системы» (SharedPreferences `ui_scaling_prefs`, класс `UiScalingPreferences`):
+- `overlay_font_scale` — общий масштаб шрифта оверлея (0.5…2.0)
+- `overlay_plate_width_percent` / `overlay_plate_height_percent` — общий размер плашки (50…300%)
+- `overlay_content_offset_x` / `overlay_content_offset_y` — общее смещение содержимого внутри плашки (-200…200%)
+
+Итоговые значения для приложения:
+- смещение содержимого = общее **+** настройка приложения;
+- размер плашки = общий **×** настройка приложения / 100 (итог удерживается в диапазоне 50…300%).
 
 ## Использование
 

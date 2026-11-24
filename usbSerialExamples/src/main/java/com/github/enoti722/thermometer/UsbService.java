@@ -107,6 +107,20 @@ public class UsbService extends Service implements SerialInputOutputManager.List
      * Умножается на общий масштаб оверлея из настроек системы.
      */
     private float currentDataSizeScale = AppSettings.DEFAULT_OVERLAY_DATA_SIZE_SCALE;
+    /**
+     * Итоговое смещение содержимого (значок и тексты) внутри плашки: общая настройка + настройка
+     * текущего приложения, в процентах от размера самого содержимого. 0 — по центру.
+     */
+    private int currentContentOffsetXPercent = 0;
+    private int currentContentOffsetYPercent = 0;
+    /**
+     * Итоговые множители размера плашки: общая настройка × настройка приложения / 100.
+     * 1.0 — текущий размер плашки.
+     */
+    private float currentPlateWidthFactor = 1.0f;
+    private float currentPlateHeightFactor = 1.0f;
+    /** Высота содержимого вертикального блока из последнего замера ({@link #measureOverlayContent}). */
+    private int lastMeasuredOverlayContentHeightPx = 0;
 
     /**
      * Показывать блок скорости (км/ч). Источник: GPS ({@link GpsSpeedProvider}) или эмуляция ({@link EmulatedSpeedProvider}, {@link SpeedEmulationActivity}).
@@ -389,6 +403,12 @@ public class UsbService extends Service implements SerialInputOutputManager.List
             }
             if (UiScalingPreferences.KEY_ALERT_FONT_SCALE.equals(key)) {
                 applyFloatingNotificationTextSizes();
+            }
+            if (UiScalingPreferences.KEY_OVERLAY_CONTENT_OFFSET_X.equals(key)
+                    || UiScalingPreferences.KEY_OVERLAY_CONTENT_OFFSET_Y.equals(key)
+                    || UiScalingPreferences.KEY_OVERLAY_PLATE_WIDTH_PERCENT.equals(key)
+                    || UiScalingPreferences.KEY_OVERLAY_PLATE_HEIGHT_PERCENT.equals(key)) {
+                reloadOverlayDimensionsAndPosition();
             }
             if (SystemSettingsPreferences.KEY_TEMP_SPEED_GATE_KMH.equals(key)
                     || SystemSettingsPreferences.KEY_TEMP_AVG_WINDOW_MIN.equals(key)
@@ -1457,19 +1477,92 @@ public class UsbService extends Service implements SerialInputOutputManager.List
     private int scaledOverlayWidthPx(boolean includeSpeedColumn) {
         int base = currentOverlayVertical ? dpToRoundedPx(OVERLAY_WIDTH_VERTICAL_DP)
                 : includeSpeedColumn ? OVERLAY_WIDTH_WITH_SPEED : OVERLAY_WIDTH_NO_SPEED;
-        return Math.max(1, Math.round(base * overlayUiScaleFactor()));
+        return Math.max(1, Math.round(base * overlayUiScaleFactor() * currentPlateWidthFactor));
     }
 
     /**
-     * Высота окна оверлея: вертикальный блок заворачивается по содержимому (WRAP_CONTENT) —
-     * окно ровно по высоте строк на любой плотности экрана. Горизонтальный режим — как раньше,
-     * фиксированные базовые пиксели.
+     * Высота окна оверлея: вертикальный блок — замер содержимого × множитель высоты плашки
+     * (окно ровно по высоте строк на любой плотности экрана); горизонтальный режим — как раньше,
+     * фиксированные базовые пиксели × множитель высоты плашки.
      */
     private int scaledOverlayHeightPx() {
         if (!currentOverlayVertical) {
-            return Math.max(1, Math.round(OVERLAY_HEIGHT_PX * overlayUiScaleFactor()));
+            return Math.max(1, Math.round(OVERLAY_HEIGHT_PX * overlayUiScaleFactor() * currentPlateHeightFactor));
         }
-        return WindowManager.LayoutParams.WRAP_CONTENT;
+        if (lastMeasuredOverlayContentHeightPx <= 0) {
+            // Замер ещё не выполнялся — пусть система завернёт окно по содержимому.
+            return WindowManager.LayoutParams.WRAP_CONTENT;
+        }
+        return Math.max(1, Math.round(lastMeasuredOverlayContentHeightPx * currentPlateHeightFactor));
+    }
+
+    /**
+     * Итоговые значения внешнего вида оверлея для приложения: смещение содержимого —
+     * общая настройка + настройка приложения; размер плашки — общая × настройка приложения / 100
+     * (итог удерживается в допустимом диапазоне).
+     */
+    private void refreshOverlayAppearanceSettings(String packageName) {
+        int appOffsetX = 0;
+        int appOffsetY = 0;
+        int appPlateWidth = AppSettings.DEFAULT_OVERLAY_PLATE_SIZE_PERCENT;
+        int appPlateHeight = AppSettings.DEFAULT_OVERLAY_PLATE_SIZE_PERCENT;
+        AppSettings appSettings = packageName == null ? null : settingsManager.getAppSettings(packageName);
+        if (appSettings != null) {
+            appOffsetX = appSettings.getOverlayContentOffsetXPercent();
+            appOffsetY = appSettings.getOverlayContentOffsetYPercent();
+            appPlateWidth = appSettings.getOverlayPlateWidthPercent();
+            appPlateHeight = appSettings.getOverlayPlateHeightPercent();
+        }
+        currentContentOffsetXPercent = AppSettings.clampOverlayContentOffsetPercent(
+                UiScalingPreferences.overlayContentOffsetXPercent(this) + appOffsetX);
+        currentContentOffsetYPercent = AppSettings.clampOverlayContentOffsetPercent(
+                UiScalingPreferences.overlayContentOffsetYPercent(this) + appOffsetY);
+        currentPlateWidthFactor = AppSettings.clampOverlayPlateSizePercent(
+                Math.round(UiScalingPreferences.overlayPlateWidthPercent(this) * appPlateWidth / 100f)) / 100f;
+        currentPlateHeightFactor = AppSettings.clampOverlayPlateSizePercent(
+                Math.round(UiScalingPreferences.overlayPlateHeightPercent(this) * appPlateHeight / 100f)) / 100f;
+    }
+
+    /**
+     * Замер корня оверлея под заданную ширину окна (для вертикального блока высота — AT_MOST,
+     * чтобы узнать высоту содержимого). После замера актуальны размеры {@code overlayContainer}
+     * и {@link #lastMeasuredOverlayContentHeightPx}.
+     */
+    private void measureOverlayContent(int windowWidth, int windowHeightOrZero) {
+        if (overlayView == null) {
+            return;
+        }
+        try {
+            android.util.DisplayMetrics displayMetrics = new android.util.DisplayMetrics();
+            windowManager.getDefaultDisplay().getRealMetrics(displayMetrics);
+            int specW = View.MeasureSpec.makeMeasureSpec(Math.max(1, windowWidth), View.MeasureSpec.EXACTLY);
+            int specH = windowHeightOrZero > 0
+                    ? View.MeasureSpec.makeMeasureSpec(windowHeightOrZero, View.MeasureSpec.EXACTLY)
+                    : View.MeasureSpec.makeMeasureSpec(Math.max(1, displayMetrics.heightPixels), View.MeasureSpec.AT_MOST);
+            overlayView.measure(specW, specH);
+            if (windowHeightOrZero <= 0) {
+                lastMeasuredOverlayContentHeightPx = overlayView.getMeasuredHeight();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "measureOverlayContent: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Смещение содержимого (значок и тексты) внутри плашки: проценты берутся от размера самого
+     * содержимого, поэтому плашка остаётся на месте, а двигается только блок данных.
+     */
+    private void applyOverlayContentOffset() {
+        if (overlayContainer == null) {
+            return;
+        }
+        float contentW = overlayContainer.getMeasuredWidth();
+        float contentH = overlayContainer.getMeasuredHeight();
+        if (contentW <= 0f || contentH <= 0f) {
+            return; // размеры ещё не известны — применится при следующем обновлении
+        }
+        overlayContainer.setTranslationX(currentContentOffsetXPercent / 100f * contentW);
+        overlayContainer.setTranslationY(currentContentOffsetYPercent / 100f * contentH);
     }
 
     private int dpToRoundedPx(float dp) {
@@ -1564,6 +1657,7 @@ public class UsbService extends Service implements SerialInputOutputManager.List
         if (overlayView == null || windowManager == null || settingsManager == null) {
             return;
         }
+        refreshOverlayAppearanceSettings(currentForegroundApp);
         applyOverlayChromeLayout();
         applyOverlayTextSizes();
         try {
@@ -1571,9 +1665,16 @@ public class UsbService extends Service implements SerialInputOutputManager.List
             boolean overlayOn = overlayView.getVisibility() == View.VISIBLE;
             boolean speedColumn = overlayOn && ENABLE_GPS_SPEED && !currentForegroundApp.isEmpty()
                     && settingsManager.isOverlaySpeedVisibleForApp(currentForegroundApp);
-            params.width = scaledOverlayWidthPx(speedColumn);
+            int targetWidth = scaledOverlayWidthPx(speedColumn);
+            if (currentOverlayVertical) {
+                measureOverlayContent(targetWidth, 0);
+            } else {
+                measureOverlayContent(targetWidth, scaledOverlayHeightPx());
+            }
+            params.width = targetWidth;
             params.height = scaledOverlayHeightPx();
             windowManager.updateViewLayout(overlayView, params);
+            applyOverlayContentOffset();
             if (overlayOn) {
                 updateOverlayPosition(lastOverlayPositionXPercent, lastOverlayPositionYPercent);
             }
@@ -1949,6 +2050,7 @@ public class UsbService extends Service implements SerialInputOutputManager.List
         lastOverlayPositionYPercent = yPercent;
         currentOverlayVertical = overlayVertical;
         currentDataSizeScale = AppSettings.clampOverlayDataSizeScale(dataSizeScale);
+        refreshOverlayAppearanceSettings(packageName);
 
         // Логируем настройки
         if (appSettings != null) {
@@ -1959,7 +2061,9 @@ public class UsbService extends Service implements SerialInputOutputManager.List
                       + ", alphaBottom=" + overlayAlphaBottom
                       + ", position=" + xPercent + "%," + yPercent + "%"
                       + ", vertical=" + overlayVertical
-                      + ", dataSizeScale=" + currentDataSizeScale);
+                      + ", dataSizeScale=" + currentDataSizeScale
+                      + ", contentOffset=" + currentContentOffsetXPercent + "%," + currentContentOffsetYPercent + "%"
+                      + ", plateSize=" + currentPlateWidthFactor + "x," + currentPlateHeightFactor + "x");
         } else {
             Log.d(TAG, "  No settings found for this app, using defaults (overlay=false, notifications=false, speedVisible=false, custom alpha defaults)");
         }
@@ -1981,11 +2085,22 @@ public class UsbService extends Service implements SerialInputOutputManager.List
             }
         }
 
+        // Ориентация блока, отступы и шрифты — до расчёта размеров окна: высота вертикального
+        // блока и смещение содержимого считаются по замеру содержимого в его итоговом виде.
+        applyOverlayChromeLayout();
+        applyOverlayTextSizes();
+
         if (overlayView != null && windowManager != null) {
             try {
                 WindowManager.LayoutParams params = (WindowManager.LayoutParams) overlayView.getLayoutParams();
                 boolean widthWithSpeed = ENABLE_GPS_SPEED && overlayEnabled && overlaySpeedVisible;
                 int targetWidth = scaledOverlayWidthPx(widthWithSpeed);
+                if (currentOverlayVertical) {
+                    // Высоту вертикального окна узнаём замером содержимого под новую ширину.
+                    measureOverlayContent(targetWidth, 0);
+                } else {
+                    measureOverlayContent(targetWidth, scaledOverlayHeightPx());
+                }
                 int targetHeight = scaledOverlayHeightPx();
                 if (params.width != targetWidth || params.height != targetHeight) {
                     params.width = targetWidth;
@@ -1993,12 +2108,12 @@ public class UsbService extends Service implements SerialInputOutputManager.List
                     windowManager.updateViewLayout(overlayView, params);
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Error updating overlay width: " + e.getMessage());
+                Log.e(TAG, "Error updating overlay size: " + e.getMessage());
             }
         }
 
-        applyOverlayChromeLayout();
-        applyOverlayTextSizes();
+        // Смещение содержимого внутри плашки — после замера содержимого.
+        applyOverlayContentOffset();
 
         // Применяем позицию оверлея после изменения ширины/высоты и масштаба контента.
         if (overlayEnabled && overlayView != null && windowManager != null) {

@@ -40,6 +40,14 @@ public class AppSpecificSettingsActivity extends AppCompatActivity {
     private Switch switchOverlayVertical;
     private SeekBar seekBarDataSize;
     private TextView textDataSizeValue;
+    private SeekBar seekBarContentOffsetX;
+    private SeekBar seekBarContentOffsetY;
+    private TextView textContentOffsetXValue;
+    private TextView textContentOffsetYValue;
+    private SeekBar seekBarPlateWidth;
+    private SeekBar seekBarPlateHeight;
+    private TextView textPlateWidthValue;
+    private TextView textPlateHeightValue;
     private SeekBar seekBarOverlayAlphaTop;
     private SeekBar seekBarOverlayAlphaBottom;
     private TextView textOverlayAlphaTopValue;
@@ -84,6 +92,14 @@ public class AppSpecificSettingsActivity extends AppCompatActivity {
         switchOverlayVertical = findViewById(R.id.switch_overlay_vertical);
         seekBarDataSize = findViewById(R.id.seekbar_data_size);
         textDataSizeValue = findViewById(R.id.text_data_size_value);
+        seekBarContentOffsetX = findViewById(R.id.seekbar_content_offset_x);
+        seekBarContentOffsetY = findViewById(R.id.seekbar_content_offset_y);
+        textContentOffsetXValue = findViewById(R.id.text_content_offset_x_value);
+        textContentOffsetYValue = findViewById(R.id.text_content_offset_y_value);
+        seekBarPlateWidth = findViewById(R.id.seekbar_plate_width);
+        seekBarPlateHeight = findViewById(R.id.seekbar_plate_height);
+        textPlateWidthValue = findViewById(R.id.text_plate_width_value);
+        textPlateHeightValue = findViewById(R.id.text_plate_height_value);
         seekBarOverlayAlphaTop = findViewById(R.id.seekbar_overlay_alpha_top);
         seekBarOverlayAlphaBottom = findViewById(R.id.seekbar_overlay_alpha_bottom);
         textOverlayAlphaTopValue = findViewById(R.id.text_overlay_alpha_top_value);
@@ -97,6 +113,10 @@ public class AppSpecificSettingsActivity extends AppCompatActivity {
         seekBarX.setMax(AppSettings.OVERLAY_POSITION_X_SEEK_MAX);
         seekBarY.setMax(AppSettings.OVERLAY_POSITION_Y_SEEK_MAX);
         seekBarDataSize.setMax(AppSettings.OVERLAY_DATA_SIZE_SEEK_MAX);
+        seekBarContentOffsetX.setMax(AppSettings.OVERLAY_CONTENT_OFFSET_SEEK_MAX);
+        seekBarContentOffsetY.setMax(AppSettings.OVERLAY_CONTENT_OFFSET_SEEK_MAX);
+        seekBarPlateWidth.setMax(AppSettings.OVERLAY_PLATE_SIZE_SEEK_MAX);
+        seekBarPlateHeight.setMax(AppSettings.OVERLAY_PLATE_SIZE_SEEK_MAX);
 
         textAppName.setText(appName);
 
@@ -122,6 +142,18 @@ public class AppSpecificSettingsActivity extends AppCompatActivity {
             switchOverlayVertical.setChecked(currentSettings.isOverlayVertical());
             seekBarDataSize.setProgress(AppSettings.dataSizeSeekProgressFromScale(currentSettings.getOverlayDataSizeScale()));
             textDataSizeValue.setText(formatDataSizeScale(currentSettings.getOverlayDataSizeScale()));
+            seekBarContentOffsetX.setProgress(
+                    AppSettings.overlayContentOffsetSeekProgressFromPercent(currentSettings.getOverlayContentOffsetXPercent()));
+            seekBarContentOffsetY.setProgress(
+                    AppSettings.overlayContentOffsetSeekProgressFromPercent(currentSettings.getOverlayContentOffsetYPercent()));
+            textContentOffsetXValue.setText(formatContentOffsetPercent(currentSettings.getOverlayContentOffsetXPercent()));
+            textContentOffsetYValue.setText(formatContentOffsetPercent(currentSettings.getOverlayContentOffsetYPercent()));
+            seekBarPlateWidth.setProgress(
+                    AppSettings.overlayPlateSizeSeekProgressFromPercent(currentSettings.getOverlayPlateWidthPercent()));
+            seekBarPlateHeight.setProgress(
+                    AppSettings.overlayPlateSizeSeekProgressFromPercent(currentSettings.getOverlayPlateHeightPercent()));
+            textPlateWidthValue.setText(formatPlatePercent(currentSettings.getOverlayPlateWidthPercent()));
+            textPlateHeightValue.setText(formatPlatePercent(currentSettings.getOverlayPlateHeightPercent()));
             seekBarOverlayAlphaTop.setProgress(currentSettings.getOverlayAlphaTop());
             seekBarOverlayAlphaBottom.setProgress(currentSettings.getOverlayAlphaBottom());
             textOverlayAlphaTopValue.setText(String.valueOf(currentSettings.getOverlayAlphaTop()));
@@ -138,6 +170,18 @@ public class AppSpecificSettingsActivity extends AppCompatActivity {
             switchOverlayVertical.setChecked(false);
             seekBarDataSize.setProgress(AppSettings.dataSizeSeekProgressFromScale(AppSettings.DEFAULT_OVERLAY_DATA_SIZE_SCALE));
             textDataSizeValue.setText(formatDataSizeScale(AppSettings.DEFAULT_OVERLAY_DATA_SIZE_SCALE));
+            seekBarContentOffsetX.setProgress(
+                    AppSettings.overlayContentOffsetSeekProgressFromPercent(0));
+            seekBarContentOffsetY.setProgress(
+                    AppSettings.overlayContentOffsetSeekProgressFromPercent(0));
+            textContentOffsetXValue.setText(formatContentOffsetPercent(0));
+            textContentOffsetYValue.setText(formatContentOffsetPercent(0));
+            seekBarPlateWidth.setProgress(
+                    AppSettings.overlayPlateSizeSeekProgressFromPercent(AppSettings.DEFAULT_OVERLAY_PLATE_SIZE_PERCENT));
+            seekBarPlateHeight.setProgress(
+                    AppSettings.overlayPlateSizeSeekProgressFromPercent(AppSettings.DEFAULT_OVERLAY_PLATE_SIZE_PERCENT));
+            textPlateWidthValue.setText(formatPlatePercent(AppSettings.DEFAULT_OVERLAY_PLATE_SIZE_PERCENT));
+            textPlateHeightValue.setText(formatPlatePercent(AppSettings.DEFAULT_OVERLAY_PLATE_SIZE_PERCENT));
             seekBarOverlayAlphaTop.setProgress(AppSettings.DEFAULT_OVERLAY_ALPHA_TOP);
             seekBarOverlayAlphaBottom.setProgress(AppSettings.DEFAULT_OVERLAY_ALPHA_BOTTOM);
             textOverlayAlphaTopValue.setText(String.valueOf(AppSettings.DEFAULT_OVERLAY_ALPHA_TOP));
@@ -167,6 +211,74 @@ public class AppSpecificSettingsActivity extends AppCompatActivity {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 textDataSizeValue.setText(formatDataSizeScale(AppSettings.dataSizeScaleFromSeekProgress(progress)));
+                if (fromUser) {
+                    saveSettings();
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+
+        seekBarContentOffsetX.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                textContentOffsetXValue.setText(formatContentOffsetPercent(
+                        AppSettings.overlayContentOffsetFromSeekProgress(progress)));
+                if (fromUser) {
+                    saveSettings();
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+
+        seekBarContentOffsetY.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                textContentOffsetYValue.setText(formatContentOffsetPercent(
+                        AppSettings.overlayContentOffsetFromSeekProgress(progress)));
+                if (fromUser) {
+                    saveSettings();
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+
+        seekBarPlateWidth.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                textPlateWidthValue.setText(formatPlatePercent(
+                        AppSettings.overlayPlateSizeFromSeekProgress(progress)));
+                if (fromUser) {
+                    saveSettings();
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+
+        seekBarPlateHeight.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                textPlateHeightValue.setText(formatPlatePercent(
+                        AppSettings.overlayPlateSizeFromSeekProgress(progress)));
                 if (fromUser) {
                     saveSettings();
                 }
@@ -321,19 +433,24 @@ public class AppSpecificSettingsActivity extends AppCompatActivity {
         int xPercent = AppSettings.percentXFromSeekProgress(seekBarX.getProgress());
         int yPercent = AppSettings.percentYFromSeekProgress(seekBarY.getProgress());
 
-        AppSettings settings = new AppSettings(
-                packageName,
-                appName,
-                switchOverlay.isChecked(),
-                switchNotifications.isChecked(),
-                UsbService.ENABLE_GPS_SPEED && switchOverlaySpeedVisibility.isChecked(),
-                AppSettings.clampOverlayAlpha(seekBarOverlayAlphaTop.getProgress()),
-                AppSettings.clampOverlayAlpha(seekBarOverlayAlphaBottom.getProgress()),
-                xPercent,
-                yPercent,
-                switchOverlayVertical.isChecked(),
-                AppSettings.dataSizeScaleFromSeekProgress(seekBarDataSize.getProgress())
-        );
+        AppSettings settings = new AppSettings(packageName, appName);
+        settings.setOverlayEnabled(switchOverlay.isChecked());
+        settings.setNotificationsEnabled(switchNotifications.isChecked());
+        settings.setOverlaySpeedVisible(UsbService.ENABLE_GPS_SPEED && switchOverlaySpeedVisibility.isChecked());
+        settings.setOverlayAlphaTop(AppSettings.clampOverlayAlpha(seekBarOverlayAlphaTop.getProgress()));
+        settings.setOverlayAlphaBottom(AppSettings.clampOverlayAlpha(seekBarOverlayAlphaBottom.getProgress()));
+        settings.setOverlayPositionXPercent(xPercent);
+        settings.setOverlayPositionYPercent(yPercent);
+        settings.setOverlayVertical(switchOverlayVertical.isChecked());
+        settings.setOverlayDataSizeScale(AppSettings.dataSizeScaleFromSeekProgress(seekBarDataSize.getProgress()));
+        settings.setOverlayContentOffsetXPercent(
+                AppSettings.overlayContentOffsetFromSeekProgress(seekBarContentOffsetX.getProgress()));
+        settings.setOverlayContentOffsetYPercent(
+                AppSettings.overlayContentOffsetFromSeekProgress(seekBarContentOffsetY.getProgress()));
+        settings.setOverlayPlateWidthPercent(
+                AppSettings.overlayPlateSizeFromSeekProgress(seekBarPlateWidth.getProgress()));
+        settings.setOverlayPlateHeightPercent(
+                AppSettings.overlayPlateSizeFromSeekProgress(seekBarPlateHeight.getProgress()));
         settingsManager.addOrUpdateAppSettings(settings);
     }
 
@@ -344,6 +461,16 @@ public class AppSpecificSettingsActivity extends AppCompatActivity {
             return String.format(Locale.US, "x%.0f", clamped);
         }
         return String.format(Locale.US, "x%.2f", clamped);
+    }
+
+    /** Подпись смещения содержимого: «-50%», «0%», «75%» … */
+    private static String formatContentOffsetPercent(int percent) {
+        return String.format(Locale.US, "%d%%", AppSettings.clampOverlayContentOffsetPercent(percent));
+    }
+
+    /** Подпись размера плашки: «100%», «50%», «300%» … */
+    private static String formatPlatePercent(int percent) {
+        return String.format(Locale.US, "%d%%", AppSettings.clampOverlayPlateSizePercent(percent));
     }
 
     @Override

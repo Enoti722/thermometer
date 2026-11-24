@@ -207,6 +207,168 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:text="Содержимое внутри плашки"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:paddingTop="20dp"
+                android:paddingBottom="8dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Горизонтальное смещение (%)"
+                android:textSize="14sp"
+                android:paddingTop="4dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingTop="8dp">
+
+                <SeekBar
+                    android:id="@+id/seekbar_content_offset_x"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:max="80"
+                    android:progress="40" />
+
+                <TextView
+                    android:id="@+id/text_content_offset_x_value"
+                    android:layout_width="64dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:gravity="center"
+                    android:text="0%"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Вертикальное смещение (%)"
+                android:textSize="14sp"
+                android:paddingTop="16dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingTop="8dp">
+
+                <SeekBar
+                    android:id="@+id/seekbar_content_offset_y"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:max="80"
+                    android:progress="40" />
+
+                <TextView
+                    android:id="@+id/text_content_offset_y_value"
+                    android:layout_width="64dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:gravity="center"
+                    android:text="0%"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Сдвиг значка и текстов внутри плашки: -50% по горизонтали = влево на половину ширины содержимого; 0% — по центру. Итог = общая настройка + эта."
+                android:textSize="12sp"
+                android:textColor="#757575"
+                android:paddingTop="8dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Размер плашки (фона)"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:paddingTop="20dp"
+                android:paddingBottom="8dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Ширина плашки (%)"
+                android:textSize="14sp"
+                android:paddingTop="4dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingTop="8dp">
+
+                <SeekBar
+                    android:id="@+id/seekbar_plate_width"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:max="50"
+                    android:progress="10" />
+
+                <TextView
+                    android:id="@+id/text_plate_width_value"
+                    android:layout_width="64dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:gravity="center"
+                    android:text="100%"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Высота плашки (%)"
+                android:textSize="14sp"
+                android:paddingTop="16dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingTop="8dp">
+
+                <SeekBar
+                    android:id="@+id/seekbar_plate_height"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:max="50"
+                    android:progress="10" />
+
+                <TextView
+                    android:id="@+id/text_plate_height_value"
+                    android:layout_width="64dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:gravity="center"
+                    android:text="100%"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="100% — текущий размер плашки, содержимое не масштабируется. Итог = общая настройка × эта / 100."
+                android:textSize="12sp"
+                android:textColor="#757575"
+                android:paddingTop="8dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
                 android:text="Прозрачность оверлея"
                 android:textSize="16sp"
                 android:textStyle="bold"
