@@ -90,6 +90,9 @@
         <activity
             android:name=".MainActivity"
             android:launchMode="singleTask"
+            android:alwaysRetainTaskState="true"
+            android:clearTaskOnLaunch="false"
+            android:finishOnTaskLaunch="false"
             android:windowSoftInputMode="stateHidden|adjustResize"
             android:exported="true">
             <intent-filter>

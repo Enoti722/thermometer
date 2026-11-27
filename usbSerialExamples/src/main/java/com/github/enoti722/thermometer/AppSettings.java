@@ -7,8 +7,8 @@ public class AppSettings {
     public static final String SYSTEM_PACKAGE_NAME = "__system_home__";
     public static final String SYSTEM_APP_NAME = "Система";
     /** Допустимый диапазон позиции оверлея по горизонтали в процентах (ползунок и сохранённое значение). */
-    public static final int OVERLAY_POSITION_X_MIN_PERCENT = -20;
-    public static final int OVERLAY_POSITION_X_MAX_PERCENT = 120;
+    public static final int OVERLAY_POSITION_X_MIN_PERCENT = -5;
+    public static final int OVERLAY_POSITION_X_MAX_PERCENT = 105;
     /** Допустимый диапазон позиции оверлея по вертикали в процентах. */
     public static final int OVERLAY_POSITION_Y_MIN_PERCENT = -5;
     public static final int OVERLAY_POSITION_Y_MAX_PERCENT = 105;
@@ -36,8 +36,8 @@ public class AppSettings {
      * Смещение содержимого (значок и тексты) внутри плашки: проценты от размера самого содержимого.
      * -50% по горизонтали — сдвиг влево на половину ширины содержимого; 0 — по центру (как раньше).
      */
-    public static final int OVERLAY_CONTENT_OFFSET_MIN_PERCENT = -200;
-    public static final int OVERLAY_CONTENT_OFFSET_MAX_PERCENT = 200;
+    public static final int OVERLAY_CONTENT_OFFSET_MIN_PERCENT = -100;
+    public static final int OVERLAY_CONTENT_OFFSET_MAX_PERCENT = 100;
     public static final int OVERLAY_CONTENT_OFFSET_SEEK_STEP = 5;
     public static final int OVERLAY_CONTENT_OFFSET_SEEK_MAX =
             (OVERLAY_CONTENT_OFFSET_MAX_PERCENT - OVERLAY_CONTENT_OFFSET_MIN_PERCENT)

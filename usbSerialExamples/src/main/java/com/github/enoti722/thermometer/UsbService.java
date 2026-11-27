@@ -1577,9 +1577,9 @@ public class UsbService extends Service implements SerialInputOutputManager.List
         }
         float sc = overlayUiScaleFactor();
         overlayView.setPadding(
-                dpToRoundedPx(14f * sc),
+                0,
                 dpToRoundedPx(10f * sc),
-                dpToRoundedPx(14f * sc),
+                0,
                 dpToRoundedPx(12f * sc));
 
         if (overlayTemperatureIcon != null) {

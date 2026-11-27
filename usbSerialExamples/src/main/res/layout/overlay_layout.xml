@@ -2,8 +2,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/overlay_background"
-    android:paddingStart="14dp"
-    android:paddingEnd="14dp"
+    android:paddingStart="0dp"
+    android:paddingEnd="0dp"
     android:paddingTop="10dp"
     android:paddingBottom="12dp">
 

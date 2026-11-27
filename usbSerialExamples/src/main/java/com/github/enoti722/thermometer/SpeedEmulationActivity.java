@@ -22,6 +22,7 @@ public class SpeedEmulationActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_speed_emulation);
+        UiStatePreferences.save(this, UiStatePreferences.SCREEN_SPEED);
 
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);

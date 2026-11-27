@@ -42,6 +42,7 @@ public class ConfiguredAppsListActivity extends AppCompatActivity {
             getSupportActionBar().setTitle(R.string.apps_settings_activity_title);
         }
 
+        UiStatePreferences.save(this, UiStatePreferences.SCREEN_CONFIGURED_APPS);
         settingsManager = new SettingsManager(this);
 
         recyclerView = findViewById(R.id.recycler_view_configured_apps);

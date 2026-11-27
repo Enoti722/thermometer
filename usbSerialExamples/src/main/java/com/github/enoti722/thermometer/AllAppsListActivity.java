@@ -41,6 +41,7 @@ public class AllAppsListActivity extends AppCompatActivity {
             getSupportActionBar().setTitle("Выбрать приложение");
         }
 
+        UiStatePreferences.save(this, UiStatePreferences.SCREEN_ALL_APPS);
         settingsManager = new SettingsManager(this);
 
         recyclerView = findViewById(R.id.recycler_view_all_apps);

@@ -12,12 +12,12 @@ import org.junit.Test;
 public class AppSettingsTest {
 
     @Test
-    public void horizontalPositionRangeIsMinus20To120() {
-        assertEquals(-20, AppSettings.clampOverlayPositionXPercent(-100));
-        assertEquals(-20, AppSettings.clampOverlayPositionXPercent(-20));
+    public void horizontalPositionRangeIsMinus5To105() {
+        assertEquals(-5, AppSettings.clampOverlayPositionXPercent(-100));
+        assertEquals(-5, AppSettings.clampOverlayPositionXPercent(-5));
         assertEquals(50, AppSettings.clampOverlayPositionXPercent(50));
-        assertEquals(120, AppSettings.clampOverlayPositionXPercent(120));
-        assertEquals(120, AppSettings.clampOverlayPositionXPercent(500));
+        assertEquals(105, AppSettings.clampOverlayPositionXPercent(105));
+        assertEquals(105, AppSettings.clampOverlayPositionXPercent(500));
     }
 
     @Test
@@ -31,12 +31,12 @@ public class AppSettingsTest {
 
     @Test
     public void horizontalSeekCoversWholeRange() {
-        assertEquals(-20, AppSettings.percentXFromSeekProgress(0));
-        assertEquals(50, AppSettings.percentXFromSeekProgress(70));
-        assertEquals(120, AppSettings.percentXFromSeekProgress(AppSettings.OVERLAY_POSITION_X_SEEK_MAX));
-        assertEquals(0, AppSettings.seekXProgressFromPercent(-20));
-        assertEquals(70, AppSettings.seekXProgressFromPercent(50));
-        assertEquals(AppSettings.OVERLAY_POSITION_X_SEEK_MAX, AppSettings.seekXProgressFromPercent(120));
+        assertEquals(-5, AppSettings.percentXFromSeekProgress(0));
+        assertEquals(50, AppSettings.percentXFromSeekProgress(55));
+        assertEquals(105, AppSettings.percentXFromSeekProgress(AppSettings.OVERLAY_POSITION_X_SEEK_MAX));
+        assertEquals(0, AppSettings.seekXProgressFromPercent(-5));
+        assertEquals(55, AppSettings.seekXProgressFromPercent(50));
+        assertEquals(AppSettings.OVERLAY_POSITION_X_SEEK_MAX, AppSettings.seekXProgressFromPercent(105));
     }
 
     @Test
@@ -51,13 +51,13 @@ public class AppSettingsTest {
 
     @Test
     public void savedValuesFromOldRangeStayValid() {
-        // До расширения горизонтали сохранялись значения -5 … 105 — они остаются в новом диапазоне.
+        // Горизонтальная позиция ограничена диапазоном -5 … 105%.
         assertEquals(-5, AppSettings.clampOverlayPositionXPercent(-5));
         assertEquals(105, AppSettings.clampOverlayPositionXPercent(105));
-        assertEquals(15, AppSettings.seekXProgressFromPercent(-5));
-        assertEquals(-5, AppSettings.percentXFromSeekProgress(15));
-        assertEquals(125, AppSettings.seekXProgressFromPercent(105));
-        assertEquals(105, AppSettings.percentXFromSeekProgress(125));
+        assertEquals(0, AppSettings.seekXProgressFromPercent(-5));
+        assertEquals(-5, AppSettings.percentXFromSeekProgress(0));
+        assertEquals(110, AppSettings.seekXProgressFromPercent(105));
+        assertEquals(105, AppSettings.percentXFromSeekProgress(110));
     }
 
     @Test
@@ -102,7 +102,7 @@ public class AppSettingsTest {
                 true, true, false, 217, 240, -20, 120, true, 2.5f);
         assertTrue(settings.isOverlayVertical());
         assertEquals(2.5f, settings.getOverlayDataSizeScale(), 0f);
-        assertEquals(-20, settings.getOverlayPositionXPercent());
+        assertEquals(-5, settings.getOverlayPositionXPercent());
         assertEquals(105, settings.getOverlayPositionYPercent());
     }
 
@@ -116,24 +116,24 @@ public class AppSettingsTest {
 
     @Test
     public void contentOffsetRangeAndSeekMapping() {
-        assertEquals(-200, AppSettings.clampOverlayContentOffsetPercent(-500));
-        assertEquals(-200, AppSettings.clampOverlayContentOffsetPercent(-200));
+        assertEquals(-100, AppSettings.clampOverlayContentOffsetPercent(-500));
+        assertEquals(-100, AppSettings.clampOverlayContentOffsetPercent(-100));
         assertEquals(50, AppSettings.clampOverlayContentOffsetPercent(50));
-        assertEquals(200, AppSettings.clampOverlayContentOffsetPercent(200));
-        assertEquals(200, AppSettings.clampOverlayContentOffsetPercent(500));
+        assertEquals(100, AppSettings.clampOverlayContentOffsetPercent(100));
+        assertEquals(100, AppSettings.clampOverlayContentOffsetPercent(500));
 
-        // Ползунок: 0 → -200%, середина → 0%, конец → +200%
-        assertEquals(-200, AppSettings.overlayContentOffsetFromSeekProgress(0));
+        // Ползунок: 0 → -100%, середина → 0%, конец → +100%
+        assertEquals(-100, AppSettings.overlayContentOffsetFromSeekProgress(0));
         assertEquals(0, AppSettings.overlayContentOffsetFromSeekProgress(
                 AppSettings.OVERLAY_CONTENT_OFFSET_SEEK_MAX / 2));
-        assertEquals(200, AppSettings.overlayContentOffsetFromSeekProgress(
+        assertEquals(100, AppSettings.overlayContentOffsetFromSeekProgress(
                 AppSettings.OVERLAY_CONTENT_OFFSET_SEEK_MAX));
 
-        assertEquals(0, AppSettings.overlayContentOffsetSeekProgressFromPercent(-200));
+        assertEquals(0, AppSettings.overlayContentOffsetSeekProgressFromPercent(-100));
         assertEquals(AppSettings.OVERLAY_CONTENT_OFFSET_SEEK_MAX / 2,
                 AppSettings.overlayContentOffsetSeekProgressFromPercent(0));
         assertEquals(AppSettings.OVERLAY_CONTENT_OFFSET_SEEK_MAX,
-                AppSettings.overlayContentOffsetSeekProgressFromPercent(200));
+                AppSettings.overlayContentOffsetSeekProgressFromPercent(100));
     }
 
     @Test
@@ -172,8 +172,8 @@ public class AppSettingsTest {
         settings.setOverlayContentOffsetYPercent(999);
         settings.setOverlayPlateWidthPercent(10);
         settings.setOverlayPlateHeightPercent(9999);
-        assertEquals(-200, settings.getOverlayContentOffsetXPercent());
-        assertEquals(200, settings.getOverlayContentOffsetYPercent());
+        assertEquals(-100, settings.getOverlayContentOffsetXPercent());
+        assertEquals(100, settings.getOverlayContentOffsetYPercent());
         assertEquals(50, settings.getOverlayPlateWidthPercent());
         assertEquals(300, settings.getOverlayPlateHeightPercent());
     }

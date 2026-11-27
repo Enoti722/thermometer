@@ -35,14 +35,14 @@
     <string name="ui_scaling_intro">Масштаб только для оверлея и окон предупреждений поверх экрана. Экран основного приложения не меняется.</string>
     <string name="ui_scaling_overlay_title">Оверлей</string>
     <string name="ui_scaling_alert_title">Окна уведомлений (поверх экрана)</string>
-    <string name="system_settings_overlay_plate_title">Размер плашки оверлея (общий)</string>
+    <string name="system_settings_overlay_plate_title">Размер оверлея (фона) (общий)</string>
     <string name="system_settings_overlay_plate_width_value">Ширина плашки: %d%%</string>
     <string name="system_settings_overlay_plate_height_value">Высота плашки: %d%%</string>
-    <string name="system_settings_overlay_plate_hint">100%% — текущий размер. Итог для приложения = это значение × настройка приложения / 100.</string>
-    <string name="system_settings_overlay_content_title">Содержимое внутри плашки (общее)</string>
+    <string name="system_settings_overlay_plate_hint">100%% — текущий размер оверлея (фона). Итог для приложения = это значение × настройка приложения / 100.</string>
+    <string name="system_settings_overlay_content_title">Содержимое внутри оверлея (фона) (общее)</string>
     <string name="system_settings_overlay_content_offset_x_value">Смещение по горизонтали: %d%%</string>
     <string name="system_settings_overlay_content_offset_y_value">Смещение по вертикали: %d%%</string>
-    <string name="system_settings_overlay_content_hint">Сдвиг значка и текстов внутри плашки; проценты от размера самого содержимого, 0%% — по центру. Итог для приложения = это значение + настройка приложения.</string>
+    <string name="system_settings_overlay_content_hint">Сдвиг значка и текстов внутри оверлея (фона); проценты от размера самого содержимого, 0%% — по центру. Итог для приложения = это значение + настройка приложения.</string>
     <string name="system_settings_notification_sound">Звук при уведомлениях</string>
     <string name="system_settings_notification_sound_hint">Короткий сигнал при показе предупреждений и ошибок поверх экрана.</string>
     <string name="system_settings_notification_sound_mode_label">Как проигрывать сигнал</string>

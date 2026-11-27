@@ -30,16 +30,24 @@ public class MainActivity extends AppCompatActivity implements FragmentManager.O
         if (savedInstanceState == null && trySilentAutostart(intent)) {
             return;
         }
+        if (savedInstanceState == null && restoreLastScreenIfNeeded(intent)) {
+            return;
+        }
         setContentView(R.layout.activity_main);
         logMainActivityLaunchContext("onCreate", intent);
         LocalDiagLog.i(this, TAG, "MainActivity onCreate");
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
         getSupportFragmentManager().addOnBackStackChangedListener(this);
-        if (savedInstanceState == null)
-            getSupportFragmentManager().beginTransaction().add(R.id.fragment, new DevicesFragment(), "devices").commit();
-        else
-            onBackStackChanged();
+        // Не заменяем восстановленный фрагмент стартовым экраном. Это важно при возврате
+        // из режима «Домой»: Android может пересоздать Activity без savedInstanceState,
+        // но уже восстановить стек фрагментов из состояния задачи.
+        if (getSupportFragmentManager().findFragmentById(R.id.fragment) == null) {
+            getSupportFragmentManager().beginTransaction()
+                    .add(R.id.fragment, new DevicesFragment(), "devices")
+                    .commit();
+        }
+        onBackStackChanged();
 
         // К сожалению запускает совсем не то, что надо было
         PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
@@ -58,6 +66,30 @@ public class MainActivity extends AppCompatActivity implements FragmentManager.O
                 // Обрабатываем, если экрана нет
             }
         }
+    }
+
+    private boolean restoreLastScreenIfNeeded(Intent intent) {
+        if (intent == null || !isLauncherStyleLaunch(intent)) return false;
+        String screen = UiStatePreferences.screen(this);
+        Intent restored = null;
+        if (UiStatePreferences.SCREEN_CONFIGURED_APPS.equals(screen)) {
+            restored = new Intent(this, ConfiguredAppsListActivity.class);
+        } else if (UiStatePreferences.SCREEN_ALL_APPS.equals(screen)) {
+            restored = new Intent(this, AllAppsListActivity.class);
+        } else if (UiStatePreferences.SCREEN_SYSTEM_SETTINGS.equals(screen)) {
+            restored = new Intent(this, SystemSettingsActivity.class);
+        } else if (UiStatePreferences.SCREEN_SPEED.equals(screen)) {
+            restored = new Intent(this, SpeedEmulationActivity.class);
+        } else if (UiStatePreferences.SCREEN_APP_SETTINGS.equals(screen)
+                && UiStatePreferences.packageName(this) != null) {
+            restored = new Intent(this, AppSpecificSettingsActivity.class)
+                    .putExtra("packageName", UiStatePreferences.packageName(this))
+                    .putExtra("appName", UiStatePreferences.appName(this));
+        }
+        if (restored == null) return false;
+        startActivity(restored);
+        finish();
+        return true;
     }
 
     private boolean hasUsageStatsPermission() {
@@ -92,13 +124,14 @@ public class MainActivity extends AppCompatActivity implements FragmentManager.O
 
     @Override
     protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
         logMainActivityLaunchContext("onNewIntent", intent);
         if("android.hardware.usb.action.USB_DEVICE_ATTACHED".equals(intent.getAction())) {
             TerminalFragment terminal = (TerminalFragment)getSupportFragmentManager().findFragmentByTag("terminal");
             if (terminal != null)
                 terminal.status("USB device detected");
         }
-        super.onNewIntent(intent);
     }
 
     /**

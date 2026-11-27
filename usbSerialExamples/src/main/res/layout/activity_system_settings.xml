@@ -148,8 +148,8 @@
                 android:id="@+id/seek_overlay_content_offset_x"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:max="80"
-                android:progress="40" />
+                android:max="40"
+                android:progress="20" />
 
             <TextView
                 android:id="@+id/text_overlay_content_offset_y"
@@ -163,8 +163,8 @@
                 android:id="@+id/seek_overlay_content_offset_y"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:max="80"
-                android:progress="40" />
+                android:max="40"
+                android:progress="20" />
 
             <TextView
                 android:layout_width="match_parent"

@@ -4,8 +4,7 @@ import android.app.AlertDialog;
 import android.content.pm.PackageManager;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
-import android.text.Editable;
-import android.text.TextWatcher;
+import android.text.InputType;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -54,12 +53,10 @@ public class AppSpecificSettingsActivity extends AppCompatActivity {
     private TextView textOverlayAlphaBottomValue;
     private SeekBar seekBarX;
     private SeekBar seekBarY;
-    private EditText editTextX;
-    private EditText editTextY;
+    private TextView editTextX;
+    private TextView editTextY;
     private Button btnResetOverlayPosition;
 
-    private boolean isUpdatingX = false;
-    private boolean isUpdatingY = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -77,6 +74,7 @@ public class AppSpecificSettingsActivity extends AppCompatActivity {
         // Получаем данные из Intent
         packageName = getIntent().getStringExtra("packageName");
         appName = getIntent().getStringExtra("appName");
+        UiStatePreferences.saveAppSettings(this, packageName, appName);
 
         if (getSupportActionBar() != null) {
             getSupportActionBar().setTitle("Настройки: " + appName);
@@ -160,8 +158,8 @@ public class AppSpecificSettingsActivity extends AppCompatActivity {
             textOverlayAlphaBottomValue.setText(String.valueOf(currentSettings.getOverlayAlphaBottom()));
             seekBarX.setProgress(AppSettings.seekXProgressFromPercent(currentSettings.getOverlayPositionXPercent()));
             seekBarY.setProgress(AppSettings.seekYProgressFromPercent(currentSettings.getOverlayPositionYPercent()));
-            editTextX.setText(String.valueOf(currentSettings.getOverlayPositionXPercent()));
-            editTextY.setText(String.valueOf(currentSettings.getOverlayPositionYPercent()));
+            editTextX.setText(formatPositionPercent(currentSettings.getOverlayPositionXPercent()));
+            editTextY.setText(formatPositionPercent(currentSettings.getOverlayPositionYPercent()));
         } else {
             // Используем значения по умолчанию
             switchOverlay.setChecked(true);
@@ -322,103 +320,43 @@ public class AppSpecificSettingsActivity extends AppCompatActivity {
             public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
-        // Синхронизация SeekBar и EditText для X
         seekBarX.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if (!isUpdatingX) {
-                    isUpdatingX = true;
-                    editTextX.setText(String.valueOf(AppSettings.percentXFromSeekProgress(progress)));
-                    isUpdatingX = false;
-                    if (fromUser) {
-                        saveSettings();
-                    }
-                }
+                editTextX.setText(formatPositionPercent(AppSettings.percentXFromSeekProgress(progress)));
+                if (fromUser) saveSettings();
             }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {}
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
-
-        editTextX.addTextChangedListener(new TextWatcher() {
-            @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-
-            @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {}
-
-            @Override
-            public void afterTextChanged(Editable s) {
-                if (!isUpdatingX && s.length() > 0) {
-                    String raw = s.toString().trim();
-                    if (raw.equals("-")) {
-                        return;
-                    }
-                    isUpdatingX = true;
-                    try {
-                        int value = Integer.parseInt(raw);
-                        value = AppSettings.clampOverlayPositionXPercent(value);
-                        seekBarX.setProgress(AppSettings.seekXProgressFromPercent(value));
-                        saveSettings();
-                    } catch (NumberFormatException e) {
-                        // Игнорируем некорректный ввод
-                    }
-                    isUpdatingX = false;
-                }
-            }
-        });
-
-        // Синхронизация SeekBar и EditText для Y
         seekBarY.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if (!isUpdatingY) {
-                    isUpdatingY = true;
-                    editTextY.setText(String.valueOf(AppSettings.percentYFromSeekProgress(progress)));
-                    isUpdatingY = false;
-                    if (fromUser) {
-                        saveSettings();
-                    }
-                }
+                editTextY.setText(formatPositionPercent(AppSettings.percentYFromSeekProgress(progress)));
+                if (fromUser) saveSettings();
             }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {}
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
+        attachNumericInput(editTextX, "Горизонтальная позиция", false, value ->
+                seekBarX.setProgress(AppSettings.seekXProgressFromPercent(Integer.parseInt(value))));
+        attachNumericInput(editTextY, "Вертикальная позиция", false, value ->
+                seekBarY.setProgress(AppSettings.seekYProgressFromPercent(Integer.parseInt(value))));
 
-        editTextY.addTextChangedListener(new TextWatcher() {
-            @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-
-            @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {}
-
-            @Override
-            public void afterTextChanged(Editable s) {
-                if (!isUpdatingY && s.length() > 0) {
-                    String raw = s.toString().trim();
-                    if (raw.equals("-")) {
-                        return;
-                    }
-                    isUpdatingY = true;
-                    try {
-                        int value = Integer.parseInt(raw);
-                        value = AppSettings.clampOverlayPositionYPercent(value);
-                        seekBarY.setProgress(AppSettings.seekYProgressFromPercent(value));
-                        saveSettings();
-                    } catch (NumberFormatException e) {
-                        // Игнорируем некорректный ввод
-                    }
-                    isUpdatingY = false;
-                }
-            }
-        });
+        attachNumericInput(textDataSizeValue, "Размер данных оверлея", true, value ->
+                seekBarDataSize.setProgress(AppSettings.dataSizeSeekProgressFromScale(Float.parseFloat(value))));
+        attachNumericInput(textContentOffsetXValue, "Горизонтальное смещение", false, value ->
+                seekBarContentOffsetX.setProgress(AppSettings.overlayContentOffsetSeekProgressFromPercent(Integer.parseInt(value))));
+        attachNumericInput(textContentOffsetYValue, "Вертикальное смещение", false, value ->
+                seekBarContentOffsetY.setProgress(AppSettings.overlayContentOffsetSeekProgressFromPercent(Integer.parseInt(value))));
+        attachNumericInput(textPlateWidthValue, "Ширина оверлея", false, value ->
+                seekBarPlateWidth.setProgress(AppSettings.overlayPlateSizeSeekProgressFromPercent(Integer.parseInt(value))));
+        attachNumericInput(textPlateHeightValue, "Высота оверлея", false, value ->
+                seekBarPlateHeight.setProgress(AppSettings.overlayPlateSizeSeekProgressFromPercent(Integer.parseInt(value))));
+        attachNumericInput(textOverlayAlphaTopValue, "Верх прозрачности", false, value ->
+                seekBarOverlayAlphaTop.setProgress(AppSettings.clampOverlayAlpha(Integer.parseInt(value))));
+        attachNumericInput(textOverlayAlphaBottomValue, "Низ прозрачности", false, value ->
+                seekBarOverlayAlphaBottom.setProgress(AppSettings.clampOverlayAlpha(Integer.parseInt(value))));
 
         btnResetOverlayPosition.setOnClickListener(v -> {
             seekBarX.setProgress(AppSettings.seekXProgressFromPercent(50));
@@ -426,6 +364,45 @@ public class AppSpecificSettingsActivity extends AppCompatActivity {
             editTextX.setText("50");
             editTextY.setText("5");
             saveSettings();
+        });
+    }
+
+    private interface NumericValueConsumer {
+        void accept(String value);
+    }
+
+    private void attachNumericInput(TextView valueView, String title, boolean decimal,
+                                    NumericValueConsumer consumer) {
+        valueView.setOnClickListener(v -> {
+            EditText input = new EditText(this);
+            input.setSingleLine(true);
+            input.setInputType(decimal
+                    ? InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL
+                    : InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED);
+            String current = valueView.getText().toString().replace("x", "").replace("%", "").trim();
+            input.setText(current);
+            input.setSelection(input.length());
+            AlertDialog dialog = new AlertDialog.Builder(this)
+                    .setTitle(title)
+                    .setView(input)
+                    .setPositiveButton("Сохранить", null)
+                    .setNegativeButton("Отмена", null)
+                    .create();
+            dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                    .setOnClickListener(button -> {
+                        try {
+                            consumer.accept(input.getText().toString().trim());
+                            saveSettings();
+                            dialog.dismiss();
+                        } catch (RuntimeException ignoredError) {
+                            input.setError("Введите корректное число");
+                        }
+                    }));
+            dialog.show();
+            input.requestFocus();
+            if (dialog.getWindow() != null) {
+                dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);
+            }
         });
     }
 
@@ -461,6 +438,10 @@ public class AppSpecificSettingsActivity extends AppCompatActivity {
             return String.format(Locale.US, "x%.0f", clamped);
         }
         return String.format(Locale.US, "x%.2f", clamped);
+    }
+
+    private static String formatPositionPercent(int percent) {
+        return String.format(Locale.US, "%d%%", percent);
     }
 
     /** Подпись смещения содержимого: «-50%», «0%», «75%» … */

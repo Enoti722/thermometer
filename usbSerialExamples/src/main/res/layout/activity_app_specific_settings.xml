@@ -207,7 +207,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Содержимое внутри плашки"
+                android:text="Содержимое внутри оверлея"
                 android:textSize="16sp"
                 android:textStyle="bold"
                 android:paddingTop="20dp"
@@ -232,8 +232,8 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:max="80"
-                    android:progress="40" />
+                    android:max="40"
+                    android:progress="20" />
 
                 <TextView
                     android:id="@+id/text_content_offset_x_value"
@@ -264,8 +264,8 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:max="80"
-                    android:progress="40" />
+                    android:max="40"
+                    android:progress="20" />
 
                 <TextView
                     android:id="@+id/text_content_offset_y_value"
@@ -280,7 +280,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Сдвиг значка и текстов внутри плашки: -50% по горизонтали = влево на половину ширины содержимого; 0% — по центру. Итог = общая настройка + эта."
+                android:text="Сдвиг значка и текстов внутри оверлея: -50% по горизонтали = влево на половину ширины содержимого; 0% — по центру. Итог = общая настройка + эта."
                 android:textSize="12sp"
                 android:textColor="#757575"
                 android:paddingTop="8dp" />
@@ -288,7 +288,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Размер плашки (фона)"
+                android:text="Размер оверлея"
                 android:textSize="16sp"
                 android:textStyle="bold"
                 android:paddingTop="20dp"
@@ -297,7 +297,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Ширина плашки (%)"
+                android:text="Ширина оверлея (%)"
                 android:textSize="14sp"
                 android:paddingTop="4dp" />
 
@@ -329,7 +329,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Высота плашки (%)"
+                android:text="Высота оверлея (%)"
                 android:textSize="14sp"
                 android:paddingTop="16dp" />
 
@@ -361,7 +361,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="100% — текущий размер плашки, содержимое не масштабируется. Итог = общая настройка × эта / 100."
+                android:text="100% — текущий размер оверлея, содержимое не масштабируется. Итог = общая настройка × эта / 100."
                 android:textSize="12sp"
                 android:textColor="#757575"
                 android:paddingTop="8dp" />
@@ -470,15 +470,16 @@
                     android:max="140"
                     android:progress="70" />
 
-                <EditText
+                <TextView
                     android:id="@+id/edittext_position_x"
-                    android:layout_width="60dp"
+                    android:layout_width="64dp"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="8dp"
-                    android:inputType="numberSigned"
-                    android:maxLength="4"
-                    android:text="50"
-                    android:textAlignment="center" />
+                    android:gravity="center"
+                    android:text="50%"
+                    android:textSize="14sp"
+                    android:clickable="true"
+                    android:focusable="true" />
             </LinearLayout>
 
             <TextView
@@ -502,15 +503,16 @@
                     android:max="110"
                     android:progress="10" />
 
-                <EditText
+                <TextView
                     android:id="@+id/edittext_position_y"
-                    android:layout_width="60dp"
+                    android:layout_width="64dp"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="8dp"
-                    android:inputType="numberSigned"
-                    android:maxLength="4"
-                    android:text="50"
-                    android:textAlignment="center" />
+                    android:gravity="center"
+                    android:text="5%"
+                    android:textSize="14sp"
+                    android:clickable="true"
+                    android:focusable="true" />
             </LinearLayout>
 
             <Button
@@ -523,10 +525,19 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Горизонталь -20% … 120%, вертикаль -5% … 105%: точка на экране (от левого верха к правому низу). Якорь — центр оверлея; при 0%/0% центр в углу — блок частично за экраном."
+                android:text="Горизонталь -5% … 105%, вертикаль -5% … 105%: точка на экране (от левого верха к правому низу). Якорь — центр оверлея; при 0%/0% центр в углу — блок частично за экраном."
                 android:textSize="12sp"
                 android:textColor="#757575"
                 android:paddingTop="16dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="При нажатии на выставленное значение какого-либо параметра значение этого параметра можно точно ввести с клавиатуры."
+                android:textSize="12sp"
+                android:textColor="#757575"
+                android:paddingTop="16dp"
+                android:paddingBottom="8dp" />
 
         </LinearLayout>
     </ScrollView>
